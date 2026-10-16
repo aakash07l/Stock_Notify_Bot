@@ -1,0 +1,24 @@
+# Environment variables and secrets
+.env
+
+# Persistent state
+stock_state.json
+stock_state.json.tmp
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

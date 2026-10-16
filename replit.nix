@@ -1,0 +1,54 @@
+{ pkgs }: {
+  deps = [
+    pkgs.python311
+    pkgs.python311Packages.pip
+    pkgs.playwright-driver
+    pkgs.chromium
+    pkgs.glib
+    pkgs.nss
+    pkgs.nspr
+    pkgs.atk
+    pkgs.cups
+    pkgs.dbus
+    pkgs.gdk-pixbuf
+    pkgs.gtk3
+    pkgs.pango
+    pkgs.cairo
+    pkgs.xorg.libX11
+    pkgs.xorg.libXcomposite
+    pkgs.xorg.libXcursor
+    pkgs.xorg.libXdamage
+    pkgs.xorg.libXext
+    pkgs.xorg.libXfixes
+    pkgs.xorg.libXi
+    pkgs.xorg.libXrandr
+    pkgs.xorg.libXrender
+    pkgs.xorg.libXtst
+    pkgs.alsa-lib
+  ];
+  env = {
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+      pkgs.glib
+      pkgs.nss
+      pkgs.nspr
+      pkgs.atk
+      pkgs.cups
+      pkgs.dbus
+      pkgs.gdk-pixbuf
+      pkgs.gtk3
+      pkgs.pango
+      pkgs.cairo
+      pkgs.xorg.libX11
+      pkgs.xorg.libXcomposite
+      pkgs.xorg.libXcursor
+      pkgs.xorg.libXdamage
+      pkgs.xorg.libXext
+      pkgs.xorg.libXfixes
+      pkgs.xorg.libXi
+      pkgs.xorg.libXrandr
+      pkgs.xorg.libXrender
+      pkgs.xorg.libXtst
+      pkgs.alsa-lib
+    ];
+  };
+}
