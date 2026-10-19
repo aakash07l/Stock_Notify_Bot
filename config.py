@@ -19,15 +19,23 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 # ==========================================
 # 2. Monitoring & Bot Behavior Settings
 # ==========================================
-# Interval between monitoring loops in seconds (e.g. 180s = 3 mins, 300s = 5 mins)
+# Interval between monitoring loops in seconds (e.g. 180s = 3 mins, 240s = 4 mins)
 CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "240"))
 
 # Delay between checking each website to prevent CPU spikes and rate limits (seconds)
 SITE_CHECK_DELAY_SECONDS = int(os.getenv("SITE_CHECK_DELAY_SECONDS", "4"))
 
-# If True, sends an alert immediately on startup for items currently In Stock.
-# If False, only notifies when state transitions from OUT_OF_STOCK -> IN_STOCK.
-NOTIFY_ON_INITIAL_RUN = os.getenv("NOTIFY_ON_INITIAL_RUN", "False").lower() in ("true", "1", "yes")
+# If True, sends an alert on startup for any items currently In Stock (Default: True)
+NOTIFY_ON_INITIAL_RUN = os.getenv("NOTIFY_ON_INITIAL_RUN", "True").lower() in ("true", "1", "yes")
+
+# Send a startup confirmation message to Telegram when the script launches
+SEND_STARTUP_MESSAGE = os.getenv("SEND_STARTUP_MESSAGE", "True").lower() in ("true", "1", "yes")
+
+# Send a full stock summary report to Telegram after the first check cycle
+SEND_INITIAL_SUMMARY = os.getenv("SEND_INITIAL_SUMMARY", "True").lower() in ("true", "1", "yes")
+
+# Heartbeat interval in cycles (90 cycles * 4 mins = ~6 hours). Set to 0 to disable
+HEARTBEAT_CYCLE_INTERVAL = int(os.getenv("HEARTBEAT_CYCLE_INTERVAL", "90"))
 
 # Browser timeout in milliseconds
 PAGE_TIMEOUT_MS = int(os.getenv("PAGE_TIMEOUT_MS", "35000"))
@@ -44,20 +52,16 @@ BLOCK_MEDIA_RESOURCES = True
 # ==========================================
 # 3. Target Store Configurations
 # ==========================================
-# You can easily add new stores or edit URLs and selectors here.
 TARGET_SITES = [
     {
         "id": "rooter_psn_1000",
-        "platform": "Rooter",
+        "platform": "Rooter Shop",
         "item_name": "PlayStation Network ₹1,000 Voucher",
         "url": "https://shop.rooter.gg",
-        "engine": "playwright",  # 'playwright' for React/SPA dynamic sites, 'requests' for static HTML
+        "engine": "playwright",
         "wait_selector": "body",
-        # Text/phrases that signal OUT OF STOCK
         "out_of_stock_keywords": ["out of stock", "sold out", "currently unavailable", "notify me"],
-        # Text/phrases that signal IN STOCK
         "in_stock_keywords": ["buy now", "add to cart", "purchase", "redeem"],
-        # Specific CSS selector targeting the product card or action button (optional)
         "container_selector": "button, div[class*='card'], div[class*='product']",
         "price_selector": "span[class*='price'], div[class*='price']",
         "enabled": True,
@@ -101,13 +105,12 @@ TARGET_SITES = [
         "price_selector": "",
         "enabled": True,
     },
-    # Bonus Indian gaming site with low anti-bot (WooCommerce):
     {
         "id": "mx2games_psn_1000",
         "platform": "MX2Games",
         "item_name": "PlayStation Network PSN Wallet Top-Up (India)",
         "url": "https://mx2games.com/product/playstation-network-psn-wallet-top-up-card-inr-india/",
-        "engine": "requests",  # Fast HTTP request without spawning browser
+        "engine": "requests",
         "wait_selector": "",
         "out_of_stock_keywords": ["out of stock", "sold out"],
         "in_stock_keywords": ["in stock", "add to cart"],
