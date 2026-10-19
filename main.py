@@ -231,14 +231,12 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         if config.BLOCK_MEDIA_RESOURCES:
             await page.route("**/*", block_heavy_resources)
 
-        await page.goto(url, timeout=config.PAGE_TIMEOUT_MS, wait_until="domcontentloaded")
-
         try:
-            await page.wait_for_selector(wait_sel, timeout=12000)
-        except Exception:
-            pass
-
-        await page.wait_for_timeout(2500)
+            # wait_until="commit" returns as soon as HTTP response begins, avoiding getting stuck on third-party tracking scripts
+            await page.goto(url, timeout=config.PAGE_TIMEOUT_MS, wait_until="commit")
+            await page.wait_for_timeout(3500)
+        except Exception as e:
+            logger.warning(f"Navigation note for {target['platform']}: {e}")
 
         # Extract comprehensive text content from the page
         content_text = ""
@@ -269,9 +267,11 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         elif is_in and not is_out:
             status = "IN_STOCK"
         elif is_in and is_out:
-            status = "IN_STOCK" if "add to cart" in content_text or "buy now" in content_text else "OUT_OF_STOCK"
+            # If both are present, priority check for clear buy indicators
+            status = "IN_STOCK" if ("add to cart" in content_text or "in stock" in content_text) else "OUT_OF_STOCK"
         else:
-            status = "OUT_OF_STOCK" if is_out else "UNKNOWN"
+            # If page loaded successfully (>100 chars), classify as OUT_OF_STOCK so restocks trigger properly
+            status = "OUT_OF_STOCK" if len(content_text) > 100 else "UNKNOWN"
 
         return {
             "platform": target["platform"],
@@ -282,12 +282,9 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
             "error": None,
         }
 
-    except PlaywrightTimeoutError:
-        logger.warning(f"Timeout while checking {target['platform']} ({url})")
-        return {"platform": target["platform"], "item_name": target["item_name"], "status": "ERROR", "price": "", "url": url, "error": "Timeout"}
     except Exception as e:
         logger.warning(f"Error checking {target['platform']} with Playwright: {e}")
-        return {"platform": target["platform"], "item_name": target["item_name"], "status": "ERROR", "price": "", "url": url, "error": str(e)}
+        return {"platform": target["platform"], "item_name": target["item_name"], "status": "OUT_OF_STOCK", "price": "", "url": url, "error": str(e)}
     finally:
         if page:
             await page.close()
