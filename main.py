@@ -263,16 +263,14 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         is_out = any(keyword in content_text for keyword in out_keywords)
         is_in = any(keyword in content_text for keyword in in_keywords)
 
-        if is_out and not is_in:
-            status = "OUT_OF_STOCK"
-        elif is_in and not is_out:
+        if is_in and not is_out:
             status = "IN_STOCK"
         elif is_in and is_out:
-            # If both are present, priority check for clear buy indicators
-            status = "IN_STOCK" if ("add to cart" in content_text or "in stock" in content_text) else "OUT_OF_STOCK"
+            # If both in and out keywords exist, require active buy button
+            status = "IN_STOCK" if ("add to cart" in content_text or "in stock" in content_text or "buy now" in content_text) else "OUT_OF_STOCK"
         else:
-            # If page loaded successfully (>100 chars), classify as OUT_OF_STOCK so restocks trigger properly
-            status = "OUT_OF_STOCK" if len(content_text) > 100 else "UNKNOWN"
+            # If not explicitly in stock, classify as OUT_OF_STOCK so restocks trigger properly
+            status = "OUT_OF_STOCK"
 
         return {
             "platform": target["platform"],
