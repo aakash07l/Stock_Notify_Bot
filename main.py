@@ -111,7 +111,7 @@ async def send_startup_notification() -> bool:
 
     msg = (
         f"🤖 <b>PlayStation Stock Monitor Started!</b>\n\n"
-        f"📡 <b>Status:</b> 🟢 <b>Online & Running 24/7 on Replit</b>\n"
+        f"📡 <b>Status:</b> 🟢 <b>Online & Running 24/7 (Railway/Cloud)</b>\n"
         f"⏱️ <b>Check Interval:</b> Every {config.CHECK_INTERVAL_SECONDS // 60} minutes\n"
         f"🎯 <b>Tracking Platforms:</b> {platforms_list}\n"
         f"⏰ <b>Started At:</b> {formatted_time}\n\n"
@@ -144,6 +144,26 @@ async def send_initial_summary_report(results: List[Dict[str, Any]]) -> bool:
     return await send_telegram_message("\n".join(lines))
 
 
+async def send_periodic_summary_report(results: List[Dict[str, Any]], cycle_num: int) -> bool:
+    """Sends a periodic live stock table update (e.g. every 2 hours)."""
+    now_ist = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)
+    formatted_time = now_ist.strftime("%d-%b-%Y %I:%M %p IST")
+
+    lines = [
+        f"📊 <b>Periodic Stock Check Update (Cycle #{cycle_num})</b>",
+        f"⏰ <b>Time:</b> {formatted_time}\n",
+    ]
+
+    for item in results:
+        status = item.get("status", "UNKNOWN")
+        badge = "🟢 In Stock" if status == "IN_STOCK" else ("🔴 Out of Stock" if status == "OUT_OF_STOCK" else f"⚠️ {status}")
+        price_str = f" ({item.get('price')})" if item.get("price") else ""
+        lines.append(f"• <b>{item.get('platform')}:</b> {badge}{price_str}")
+
+    lines.append("\n✅ <i>Bot is active 24/7. Instant restock alert will trigger the moment a card restocks!</i>")
+    return await send_telegram_message("\n".join(lines))
+
+
 async def send_heartbeat_notification(cycle_num: int) -> bool:
     """Periodic health check notification (e.g. every 6 hours)."""
     now_ist = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)
@@ -151,7 +171,7 @@ async def send_heartbeat_notification(cycle_num: int) -> bool:
 
     msg = (
         f"💓 <b>Stock Monitor Heartbeat</b>\n\n"
-        f"✅ Bot is running smoothly on Replit.\n"
+        f"✅ Bot is running smoothly 24/7 in cloud.\n"
         f"🔄 <b>Cycles Completed:</b> {cycle_num}\n"
         f"⏰ <b>Timestamp:</b> {formatted_time}\n"
         f"🎯 Monitoring all {len(config.TARGET_SITES)} platforms 24/7."
@@ -188,8 +208,8 @@ async def send_telegram_alert(
 # Playwright & Scraping Utilities
 # ==========================================
 async def block_heavy_resources(route):
-    """Aborts images, fonts, media, and stylesheets to save CPU/RAM on Replit."""
-    if route.request.resource_type in ["image", "media", "font", "stylesheet"]:
+    """Aborts images, fonts, and media to save CPU/RAM while keeping stylesheets for Cloudflare compatibility."""
+    if route.request.resource_type in ["image", "media", "font"]:
         await route.abort()
     else:
         await route.continue_()
@@ -214,24 +234,21 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         await page.goto(url, timeout=config.PAGE_TIMEOUT_MS, wait_until="domcontentloaded")
 
         try:
-            await page.wait_for_selector(wait_sel, timeout=10000)
+            await page.wait_for_selector(wait_sel, timeout=12000)
         except Exception:
             pass
 
-        await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(2500)
 
-        # Extract text content
+        # Extract comprehensive text content from the page
         content_text = ""
         try:
-            elements = page.locator(container_sel)
-            count = await elements.count()
-            if count > 0:
-                texts = [await elements.nth(i).inner_text() for i in range(min(count, 5))]
-                content_text = " ".join(texts).lower()
-            else:
-                content_text = (await page.inner_text("body")).lower()
-        except Exception:
             content_text = (await page.inner_text("body")).lower()
+        except Exception:
+            try:
+                content_text = (await page.content()).lower()
+            except Exception:
+                content_text = ""
 
         # Extract price if selector is configured
         price = ""
@@ -535,6 +552,9 @@ async def run_monitor_cycle(browser: Optional[Browser], context: Optional[Browse
     if is_first_cycle:
         logger.info("📤 Sending initial summary overview to Telegram...")
         await send_initial_summary_report(cycle_results)
+    elif config.PERIODIC_SUMMARY_CYCLES > 0 and TOTAL_CYCLES_COMPLETED % config.PERIODIC_SUMMARY_CYCLES == 0:
+        logger.info(f"📤 Sending periodic stock update (Cycle #{TOTAL_CYCLES_COMPLETED}) to Telegram...")
+        await send_periodic_summary_report(cycle_results, TOTAL_CYCLES_COMPLETED)
 
     # Periodic heartbeat notification (e.g. every 90 cycles)
     if config.HEARTBEAT_CYCLE_INTERVAL > 0 and TOTAL_CYCLES_COMPLETED % config.HEARTBEAT_CYCLE_INTERVAL == 0:

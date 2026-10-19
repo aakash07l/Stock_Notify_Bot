@@ -1,6 +1,6 @@
 """
 Configuration for PlayStation Gift Card Stock Monitor.
-Define target websites, CSS selectors, alert thresholds, and Replit runtime settings.
+Define target websites, CSS selectors, alert thresholds, and Replit/Railway runtime settings.
 """
 
 import os
@@ -11,7 +11,7 @@ except ImportError:
     pass
 
 # ==========================================
-# 1. Telegram Credentials (Replit Secrets / .env)
+# 1. Telegram Credentials (Railway / Replit Secrets / .env)
 # ==========================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -19,7 +19,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 # ==========================================
 # 2. Monitoring & Bot Behavior Settings
 # ==========================================
-# Interval between monitoring loops in seconds (e.g. 180s = 3 mins, 240s = 4 mins)
+# Interval between monitoring loops in seconds (e.g. 240s = 4 mins, 300s = 5 mins)
 CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "240"))
 
 # Delay between checking each website to prevent CPU spikes and rate limits (seconds)
@@ -34,60 +34,67 @@ SEND_STARTUP_MESSAGE = os.getenv("SEND_STARTUP_MESSAGE", "True").lower() in ("tr
 # Send a full stock summary report to Telegram after the first check cycle
 SEND_INITIAL_SUMMARY = os.getenv("SEND_INITIAL_SUMMARY", "True").lower() in ("true", "1", "yes")
 
+# Send regular periodic summary update report every N cycles (e.g., 30 cycles * 4m = ~2 hours)
+# Keeps you updated with live stock table so you always know the bot is actively running
+PERIODIC_SUMMARY_CYCLES = int(os.getenv("PERIODIC_SUMMARY_CYCLES", "30"))
+
 # Heartbeat interval in cycles (90 cycles * 4 mins = ~6 hours). Set to 0 to disable
 HEARTBEAT_CYCLE_INTERVAL = int(os.getenv("HEARTBEAT_CYCLE_INTERVAL", "90"))
 
-# Browser timeout in milliseconds
-PAGE_TIMEOUT_MS = int(os.getenv("PAGE_TIMEOUT_MS", "35000"))
+# Browser timeout in milliseconds (increased to 45s for reliable cloud rendering)
+PAGE_TIMEOUT_MS = int(os.getenv("PAGE_TIMEOUT_MS", "45000"))
 
 # State persistence file
 STATE_FILE_PATH = os.getenv("STATE_FILE_PATH", "stock_state.json")
 
-# Built-in Keep-Alive Web Server port (for UptimeRobot pinging on Replit)
+# Built-in Keep-Alive Web Server port (Railway / Replit default: 8080)
 KEEP_ALIVE_PORT = int(os.getenv("PORT", "8080"))
 
-# Block heavy media resources in Playwright (images, css, fonts) to keep Replit RAM < 150MB
+# Block heavy media resources in Playwright (images, fonts, media) to keep RAM < 150MB
 BLOCK_MEDIA_RESOURCES = True
 
 # ==========================================
-# 3. Target Store Configurations
+# 3. Target Store Configurations (Direct PlayStation Voucher URLs)
 # ==========================================
 TARGET_SITES = [
     {
-        "id": "rooter_psn_1000",
+        "id": "rooter_psn",
         "platform": "Rooter Shop",
-        "item_name": "PlayStation Network ₹1,000 Voucher",
-        "url": "https://shop.rooter.gg",
+        "item_name": "PlayStation Network Wallet Voucher",
+        # Direct product URL for PlayStation cards on Rooter
+        "url": "https://shop.rooter.gg/product/playstation-gift-cards",
         "engine": "playwright",
         "wait_selector": "body",
-        "out_of_stock_keywords": ["out of stock", "sold out", "currently unavailable", "notify me"],
-        "in_stock_keywords": ["buy now", "add to cart", "purchase", "redeem"],
-        "container_selector": "button, div[class*='card'], div[class*='product']",
+        "out_of_stock_keywords": ["out of stock", "sold out", "currently unavailable"],
+        "in_stock_keywords": ["wallet code", "buy now", "add to cart", "playstation"],
+        "container_selector": "body",
         "price_selector": "span[class*='price'], div[class*='price']",
         "enabled": True,
     },
     {
-        "id": "gamestheshop_psn_1000",
+        "id": "gamestheshop_psn",
         "platform": "Games The Shop",
-        "item_name": "PlayStation Store ₹1,000 Gift Card",
+        "item_name": "PlayStation Store Gift Cards",
+        # Direct PlayStation store gift cards catalog
         "url": "https://www.gamestheshop.com/playstation-store-gift-cards",
         "engine": "playwright",
         "wait_selector": "body",
-        "out_of_stock_keywords": ["out of stock", "sold out", "notify when in stock"],
+        "out_of_stock_keywords": ["out of stock", "sold out", "notify when in stock", "notify me"],
         "in_stock_keywords": ["add to cart", "buy now", "in stock"],
-        "container_selector": ".product-layout, .detail-pro-info, .btn-add-cart",
+        "container_selector": "body",
         "price_selector": ".price, .special-price",
         "enabled": True,
     },
     {
         "id": "jiogames_psn_store",
-        "platform": "JioGames",
-        "item_name": "PlayStation Store Voucher (JioGames)",
-        "url": "https://jiogames.com",
+        "platform": "JioGames Store",
+        "item_name": "PlayStation Wallet Voucher",
+        # Direct JioGames store products catalogue
+        "url": "https://store.jiogames.com/products",
         "engine": "playwright",
         "wait_selector": "body",
         "out_of_stock_keywords": ["out of stock", "sold out", "coming soon"],
-        "in_stock_keywords": ["buy now", "get voucher", "add to cart"],
+        "in_stock_keywords": ["playstation", "buy now", "get voucher", "add to cart"],
         "container_selector": "body",
         "price_selector": "",
         "enabled": True,
@@ -95,12 +102,13 @@ TARGET_SITES = [
     {
         "id": "hubble_psn_vouchers",
         "platform": "Hubble",
-        "item_name": "PlayStation E-Gift Card (Hubble)",
-        "url": "https://myhubble.money",
+        "item_name": "PlayStation E-Gift Card",
+        # Direct PlayStation brand voucher page on Hubble
+        "url": "https://myhubble.money/brands/playstation",
         "engine": "playwright",
         "wait_selector": "body",
         "out_of_stock_keywords": ["out of stock", "sold out", "unavailable"],
-        "in_stock_keywords": ["buy now", "purchase", "get card", "avail"],
+        "in_stock_keywords": ["buy voucher", "playstation", "voucher code", "gift card"],
         "container_selector": "body",
         "price_selector": "",
         "enabled": True,
@@ -110,11 +118,12 @@ TARGET_SITES = [
         "platform": "MX2Games",
         "item_name": "PlayStation Network PSN Wallet Top-Up (India)",
         "url": "https://mx2games.com/product/playstation-network-psn-wallet-top-up-card-inr-india/",
-        "engine": "requests",
-        "wait_selector": "",
+        # Use playwright to reliably bypass Cloudflare bot challenge
+        "engine": "playwright",
+        "wait_selector": "body",
         "out_of_stock_keywords": ["out of stock", "sold out"],
         "in_stock_keywords": ["in stock", "add to cart"],
-        "container_selector": ".stock, .single_add_to_cart_button",
+        "container_selector": "body",
         "price_selector": ".woocommerce-Price-amount",
         "enabled": True,
     },
