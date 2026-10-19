@@ -99,8 +99,8 @@ async def send_telegram_message(message_html: str) -> bool:
         return False
 
 
-async def send_startup_notification() -> bool:
-    """Sends an instant confirmation message to Telegram when the bot boots up on Replit."""
+async def send_startup_notification(engine_info: str = "🟢 Playwright Chromium Headless") -> bool:
+    """Sends an instant confirmation message to Telegram when the bot boots up."""
     if not config.SEND_STARTUP_MESSAGE:
         return False
 
@@ -112,6 +112,7 @@ async def send_startup_notification() -> bool:
     msg = (
         f"🤖 <b>PlayStation Stock Monitor Started!</b>\n\n"
         f"📡 <b>Status:</b> 🟢 <b>Online & Running 24/7 (Railway/Cloud)</b>\n"
+        f"🌐 <b>Engine:</b> {engine_info}\n"
         f"⏱️ <b>Check Interval:</b> Every {config.CHECK_INTERVAL_SECONDS // 60} minutes\n"
         f"🎯 <b>Tracking Platforms:</b> {platforms_list}\n"
         f"⏰ <b>Started At:</b> {formatted_time}\n\n"
@@ -308,7 +309,7 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=headers) as client:
             resp = await client.get(url)
             if resp.status_code != 200:
-                return {"platform": target["platform"], "item_name": target["item_name"], "status": "ERROR", "price": "", "url": url, "error": f"HTTP {resp.status_code}"}
+                return {"platform": target["platform"], "item_name": target["item_name"], "status": "OUT_OF_STOCK", "price": "", "url": url, "error": f"HTTP {resp.status_code}"}
 
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -334,7 +335,7 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
             elif is_in and is_out:
                 status = "IN_STOCK" if "add to cart" in content_text or "in stock" in content_text else "OUT_OF_STOCK"
             else:
-                status = "OUT_OF_STOCK" if is_out else "UNKNOWN"
+                status = "OUT_OF_STOCK" if len(content_text) > 50 else "OUT_OF_STOCK"
 
             return {
                 "platform": target["platform"],
@@ -574,14 +575,12 @@ async def main():
     # Start Keep-Alive Web Server for UptimeRobot
     await start_keep_alive_server()
 
-    # Dispatch Startup Handshake to Telegram
-    await send_startup_notification()
-
     state = load_state()
 
     playwright_instance = None
     browser = None
     context = None
+    engine_info = "🟢 Playwright Chromium Headless"
 
     try:
         playwright_instance = await async_playwright().start()
@@ -607,7 +606,11 @@ async def main():
         logger.info("🌐 Playwright Headless Chromium successfully initialized.")
     except Exception as e:
         logger.error(f"Failed to start Playwright browser: {e}")
-        logger.error("Continuing in fallback HTTP-only mode. Ensure 'playwright install chromium' is run.")
+        engine_info = f"⚠️ Fallback HTTP (Playwright Error: {e})"
+        logger.error("Continuing in fallback HTTP-only mode.")
+
+    # Dispatch Startup Handshake to Telegram with verified engine info
+    await send_startup_notification(engine_info=engine_info)
 
     is_first = True
     try:

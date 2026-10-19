@@ -1,4 +1,4 @@
-# Use official Microsoft Playwright image with all browsers and system libraries pre-installed
+# Use official Microsoft Playwright image
 FROM mcr.microsoft.com/playwright/python:v1.49.0-jammy
 
 # Set environment variables
@@ -12,8 +12,9 @@ WORKDIR /app
 # Copy requirement files first for layer caching
 COPY requirements.txt .
 
-# Install Python packages
+# Install Python packages and install Playwright chromium binary explicitly
 RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m playwright install --with-deps chromium
 
 # Copy application source code
 COPY . .
