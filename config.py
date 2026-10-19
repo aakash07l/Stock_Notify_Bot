@@ -99,17 +99,5 @@ TARGET_SITES = [
         "price_selector": "",
         "enabled": True,
     },
-    {
-        "id": "hubble_psn_vouchers",
-        "platform": "Hubble",
-        "item_name": "PlayStation E-Gift Card",
-        "url": "https://www.myhubble.money",
-        "engine": "playwright",
-        "wait_selector": "body",
-        "out_of_stock_keywords": ["out of stock", "sold out", "unavailable", "currently unavailable"],
-        "in_stock_keywords": ["playstation", "buy voucher", "psn", "gift card", "buy now"],
-        "container_selector": "body",
-        "price_selector": "",
-        "enabled": True,
-    },
 ]
+

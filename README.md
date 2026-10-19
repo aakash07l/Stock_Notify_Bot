@@ -1,6 +1,7 @@
 # 🎮 PlayStation Gift Card Stock Monitor & Telegram Alert Bot (Replit Ready)
 
-Autonomous, lightweight Python stock monitoring bot designed for 24/7 execution on Replit. Monitors PlayStation (India) gift card availability across **Rooter, Games The Shop, JioGames, Hubble, and MX2Games**, sending instant alerts to your Telegram bot whenever an item restocks from **Out of Stock** to **In Stock**.
+Autonomous, lightweight Python stock monitoring bot designed for 24/7 execution on Railway / Cloud. Monitors PlayStation (India) gift card availability across **Rooter Shop, Games The Shop, and JioGames Store**, sending instant alerts to your Telegram bot whenever an item restocks from **Out of Stock** to **In Stock**.
+
 
 ---
 
