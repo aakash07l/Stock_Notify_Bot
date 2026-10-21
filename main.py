@@ -552,10 +552,13 @@ async def run_monitor_cycle(browser: Optional[Browser], context: Optional[Browse
         logger.info(f"📤 Sending periodic stock update (Cycle #{TOTAL_CYCLES_COMPLETED}) to Telegram...")
         await send_periodic_summary_report(cycle_results, TOTAL_CYCLES_COMPLETED)
 
-    # Periodic heartbeat notification (e.g. every 90 cycles)
+    # Periodic heartbeat notification (once every 24 hours)
     if config.HEARTBEAT_CYCLE_INTERVAL > 0 and TOTAL_CYCLES_COMPLETED % config.HEARTBEAT_CYCLE_INTERVAL == 0:
+        if config.PERIODIC_SUMMARY_CYCLES > 0 and TOTAL_CYCLES_COMPLETED % config.PERIODIC_SUMMARY_CYCLES == 0:
+            await asyncio.sleep(2)
         logger.info("📤 Sending periodic heartbeat to Telegram...")
         await send_heartbeat_notification(TOTAL_CYCLES_COMPLETED)
+
 
     logger.info("🏁 Stock check sweep complete. Resting until next interval.")
 
