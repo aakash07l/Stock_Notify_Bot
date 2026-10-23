@@ -19,8 +19,9 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 # ==========================================
 # 2. Monitoring & Bot Behavior Settings
 # ==========================================
-# Interval between monitoring loops in seconds (e.g. 240s = 4 mins, 300s = 5 mins)
-CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "240"))
+# Interval between monitoring loops in seconds (Default: 60s = 1 min for instant restock detection)
+CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "60"))
+
 
 # Delay between checking each website to prevent CPU spikes and rate limits (seconds)
 SITE_CHECK_DELAY_SECONDS = int(os.getenv("SITE_CHECK_DELAY_SECONDS", "4"))
@@ -70,7 +71,7 @@ TARGET_SITES = [
         "engine": "playwright",
         "wait_selector": "body",
         "out_of_stock_keywords": ["out of stock", "sold out", "currently unavailable"],
-        "in_stock_keywords": ["wallet code", "buy now", "add to cart", "playstation"],
+        "in_stock_keywords": ["wallet code", "proceed to pay", "pay via wallet", "pay ₹", "pay rs", "add address", "buy now", "in stock"],
         "container_selector": "body",
         "price_selector": "span[class*='price'], div[class*='price']",
         "enabled": True,
@@ -79,12 +80,12 @@ TARGET_SITES = [
         "id": "gamestheshop_psn",
         "platform": "Games The Shop",
         "item_name": "PlayStation Store Gift Cards",
-        # Direct PlayStation store gift cards catalog
-        "url": "https://www.gamestheshop.com/playstation-store-gift-cards",
+        # Direct PlayStation store digital products search on GTS
+        "url": "https://www.gamestheshop.com/search?condition=Digital&platforms=PlayStation%2CPS5%2CPS4%2CPSN",
         "engine": "playwright",
         "wait_selector": "body",
         "out_of_stock_keywords": ["out of stock", "sold out", "notify when in stock", "notify me"],
-        "in_stock_keywords": ["add to cart", "buy now", "in stock"],
+        "in_stock_keywords": ["add to cart", "buy now", "in stock", "pre order", "get voucher"],
         "container_selector": "body",
         "price_selector": ".price, .special-price",
         "enabled": True,

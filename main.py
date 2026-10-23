@@ -5,12 +5,14 @@ Designed for 24/7 autonomous execution on Replit with resource-efficient Playwri
 
 import sys
 import os
+import re
 import json
 import asyncio
 import logging
 import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+
 
 import httpx
 from bs4 import BeautifulSoup
@@ -259,15 +261,61 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
             except Exception:
                 price = ""
 
+        # Comprehensive buy keywords covering regular e-commerce and Rooter/gaming stores
+        buy_keywords = [
+            "add to cart", "in stock", "buy now", "proceed to pay",
+            "pay via wallet", "pay with wallet", "pay ₹", "pay rs",
+            "get voucher", "pre order"
+        ]
+
+        # 1. Check for visible active (non-disabled) checkout/buy buttons on the page
+        active_buy_btn_found = False
+        buy_button_selectors = (
+            "button[data-testid='proceed-to-pay'], button[testid='proceed-to-pay'], "
+            "button[data-testid='add-address-btn'], button[testid='add-address-btn'], "
+            "button:has-text('Proceed to Pay'), button:has-text('Pay via wallet'), "
+            "button:has-text('Pay ₹'), button:has-text('Pay Rs'), "
+            "button:has-text('Add to Cart'), button:has-text('Buy Now'), "
+            "a:has-text('Add to Cart'), a:has-text('Buy Now')"
+        )
+        try:
+            buy_btns = page.locator(buy_button_selectors)
+            btn_count = await buy_btns.count()
+            for idx in range(min(btn_count, 5)):
+                btn = buy_btns.nth(idx)
+                if await btn.is_visible(timeout=500):
+                    btn_text = (await btn.inner_text()).lower()
+                    if "out of stock" not in btn_text and "sold out" not in btn_text:
+                        active_buy_btn_found = True
+                        logger.info(f"🟢 Active buy button found for {target['platform']}: '{btn_text.strip()}'")
+                        break
+        except Exception:
+            pass
+
+        # 2. Check for Rooter Next.js embedded data in script tags
+        rooter_in_stock = False
+        if "rooter.gg" in url:
+            try:
+                raw_html = await page.content()
+                clean_html = raw_html.replace('\\"', '"')
+                pattern = r'"name":\s*"[^"]*Wallet Code"[^}]*"outOfStock":\s*false|"outOfStock":\s*false[^}]*"name":\s*"[^"]*Wallet Code"'
+                if re.search(pattern, clean_html, re.IGNORECASE):
+                    rooter_in_stock = True
+                    logger.info("🟢 Rooter Next.js data confirmed PlayStation Wallet Code is in stock!")
+            except Exception:
+                pass
+
         # Determine stock status
         is_out = any(keyword in content_text for keyword in out_keywords)
         is_in = any(keyword in content_text for keyword in in_keywords)
 
-        if is_in and not is_out:
+        if active_buy_btn_found or rooter_in_stock:
+            status = "IN_STOCK"
+        elif is_in and not is_out:
             status = "IN_STOCK"
         elif is_in and is_out:
-            # If both in and out keywords exist, require active buy button
-            status = "IN_STOCK" if ("add to cart" in content_text or "in stock" in content_text or "buy now" in content_text) else "OUT_OF_STOCK"
+            # If both in and out keywords exist, require active buy button / buy keywords
+            status = "IN_STOCK" if any(k in content_text for k in buy_keywords) else "OUT_OF_STOCK"
         else:
             # If not explicitly in stock, classify as OUT_OF_STOCK so restocks trigger properly
             status = "OUT_OF_STOCK"
@@ -323,17 +371,36 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
                 if price_match:
                     price = price_match.get_text().strip()
 
+            buy_keywords = [
+                "add to cart", "in stock", "buy now", "proceed to pay",
+                "pay via wallet", "pay with wallet", "pay ₹", "pay rs",
+                "get voucher", "pre order"
+            ]
+
+            rooter_in_stock = False
+            if "rooter.gg" in url:
+                try:
+                    clean_text = resp.text.replace('\\"', '"')
+                    pattern = r'"name":\s*"[^"]*Wallet Code"[^}]*"outOfStock":\s*false|"outOfStock":\s*false[^}]*"name":\s*"[^"]*Wallet Code"'
+                    if re.search(pattern, clean_text, re.IGNORECASE):
+                        rooter_in_stock = True
+                except Exception:
+                    pass
+
             is_out = any(keyword in content_text for keyword in out_keywords)
             is_in = any(keyword in content_text for keyword in in_keywords)
 
-            if is_out and not is_in:
+            if rooter_in_stock:
+                status = "IN_STOCK"
+            elif is_out and not is_in:
                 status = "OUT_OF_STOCK"
             elif is_in and not is_out:
                 status = "IN_STOCK"
             elif is_in and is_out:
-                status = "IN_STOCK" if "add to cart" in content_text or "in stock" in content_text else "OUT_OF_STOCK"
+                status = "IN_STOCK" if any(k in content_text for k in buy_keywords) else "OUT_OF_STOCK"
             else:
                 status = "OUT_OF_STOCK" if len(content_text) > 50 else "OUT_OF_STOCK"
+
 
             return {
                 "platform": target["platform"],
