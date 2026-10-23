@@ -35,15 +35,12 @@ SEND_STARTUP_MESSAGE = os.getenv("SEND_STARTUP_MESSAGE", "True").lower() in ("tr
 # Send a full stock summary report to Telegram after the first check cycle
 SEND_INITIAL_SUMMARY = os.getenv("SEND_INITIAL_SUMMARY", "True").lower() in ("true", "1", "yes")
 
-# Calculate cycles for 24 hours based on check interval:
-# 24 hours * 3600 seconds = 86,400 seconds. At 240s/cycle = 360 cycles per day.
-CYCLES_IN_24_HOURS = max(1, 86400 // CHECK_INTERVAL_SECONDS)
+# Send regular periodic summary update report every 360 cycles
+PERIODIC_SUMMARY_CYCLES = int(os.getenv("PERIODIC_SUMMARY_CYCLES", "360"))
 
-# Send regular periodic summary update report once every 24 hours (Default: 360 cycles = 24 hours)
-PERIODIC_SUMMARY_CYCLES = int(os.getenv("PERIODIC_SUMMARY_CYCLES", str(CYCLES_IN_24_HOURS)))
+# Heartbeat interval every 360 cycles. Set to 0 to disable
+HEARTBEAT_CYCLE_INTERVAL = int(os.getenv("HEARTBEAT_CYCLE_INTERVAL", "360"))
 
-# Heartbeat interval once every 24 hours (Default: 360 cycles = 24 hours). Set to 0 to disable
-HEARTBEAT_CYCLE_INTERVAL = int(os.getenv("HEARTBEAT_CYCLE_INTERVAL", str(CYCLES_IN_24_HOURS)))
 
 
 # Browser timeout in milliseconds (increased to 45s for reliable cloud rendering)
