@@ -305,9 +305,38 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
             except Exception:
                 pass
 
+        # 3. Check for Games The Shop live filter button "In Stock Only (N)"
+        is_out = None
+        is_in = None
+
+        if "gamestheshop.com" in url:
+            try:
+                gts_stock_btn = page.locator("button:has-text('In Stock Only')").first
+                if await gts_stock_btn.is_visible(timeout=1000):
+                    btn_text = await gts_stock_btn.inner_text()
+                    count_match = re.search(r'\((\d+)\)', btn_text)
+                    if count_match:
+                        in_stock_count = int(count_match.group(1))
+                        if in_stock_count == 0:
+                            logger.info(f"🔴 Games The Shop filter confirms 0 items in stock ({btn_text.strip()})")
+                            is_out = True
+                            is_in = False
+                        else:
+                            logger.info(f"🟢 Games The Shop filter confirms {in_stock_count} items in stock!")
+                            is_in = True
+                            is_out = False
+            except Exception:
+                pass
+
         # Determine stock status
-        is_out = any(keyword in content_text for keyword in out_keywords)
-        is_in = any(keyword in content_text for keyword in in_keywords)
+        if is_out is None and is_in is None:
+            is_out = any(keyword in content_text for keyword in out_keywords)
+            is_in = any(keyword in content_text for keyword in in_keywords)
+        elif is_out is None:
+            is_out = any(keyword in content_text for keyword in out_keywords)
+        elif is_in is None:
+            is_in = any(keyword in content_text for keyword in in_keywords)
+
 
         if active_buy_btn_found or rooter_in_stock:
             status = "IN_STOCK"
@@ -319,6 +348,7 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         else:
             # If not explicitly in stock, classify as OUT_OF_STOCK so restocks trigger properly
             status = "OUT_OF_STOCK"
+
 
         return {
             "platform": target["platform"],
@@ -372,7 +402,7 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
                     price = price_match.get_text().strip()
 
             buy_keywords = [
-                "add to cart", "in stock", "buy now", "proceed to pay",
+                "add to cart", "buy now", "proceed to pay",
                 "pay via wallet", "pay with wallet", "pay ₹", "pay rs",
                 "get voucher", "pre order"
             ]
@@ -389,6 +419,17 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
 
             is_out = any(keyword in content_text for keyword in out_keywords)
             is_in = any(keyword in content_text for keyword in in_keywords)
+
+            if "gamestheshop.com" in url:
+                count_match = re.search(r'In Stock Only[^\d]*\((\d+)\)', resp.text, re.IGNORECASE)
+                if count_match:
+                    if int(count_match.group(1)) == 0:
+                        is_out = True
+                        is_in = False
+                    else:
+                        is_in = True
+                        is_out = False
+
 
             if rooter_in_stock:
                 status = "IN_STOCK"
