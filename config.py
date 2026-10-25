@@ -14,7 +14,9 @@ except ImportError:
 # 1. Telegram Credentials (Railway / Replit Secrets / .env)
 # ==========================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "5701727023,1988639571").strip()
+# Support multiple chat IDs separated by commas (User + Ajay)
+TELEGRAM_CHAT_IDS = [cid.strip() for cid in TELEGRAM_CHAT_ID.split(",") if cid.strip()]
 
 # ==========================================
 # 2. Monitoring & Bot Behavior Settings
@@ -97,6 +99,34 @@ TARGET_SITES = [
         "wait_selector": "body",
         "out_of_stock_keywords": ["out of stock", "sold out", "coming soon"],
         "in_stock_keywords": ["playstation", "buy now", "get voucher", "add to cart"],
+        "container_selector": "body",
+        "price_selector": "",
+        "enabled": True,
+    },
+    {
+        "id": "digistore_psn",
+        "platform": "Digistore",
+        "item_name": "PlayStation Network Wallet Topup",
+        # Direct PlayStation cards on Digistore India (Nodwin Gaming)
+        "url": "https://digistore.co.in/product-category/console-games/playstation-card/",
+        "engine": "playwright",
+        "wait_selector": "body",
+        "out_of_stock_keywords": ["out of stock", "sold out", "currently unavailable"],
+        "in_stock_keywords": ["add to cart", "buy now", "select options"],
+        "container_selector": "body",
+        "price_selector": ".price, span.woocommerce-Price-amount",
+        "enabled": True,
+    },
+    {
+        "id": "stanshop_psn",
+        "platform": "StanShop",
+        "item_name": "PlayStation PSN Gift Card",
+        # Direct Indian PlayStation gift cards on StanShop
+        "url": "https://www.stanshop.co/playstation-psn-gift-card-in-india",
+        "engine": "playwright",
+        "wait_selector": "body",
+        "out_of_stock_keywords": ["sold out", "out of stock", "currently unavailable"],
+        "in_stock_keywords": ["buy now", "coupon worth", "instant delivery"],
         "container_selector": "body",
         "price_selector": "",
         "enabled": True,

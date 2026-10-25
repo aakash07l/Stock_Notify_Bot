@@ -75,30 +75,45 @@ def save_state(state: Dict[str, Any]):
 # Telegram Bot Dispatcher
 # ==========================================
 async def send_telegram_message(message_html: str) -> bool:
-    """Helper to send any HTML formatted message to configured Telegram chat."""
-    if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_CHAT_ID:
-        logger.warning("Telegram Bot Token or Chat ID is missing! Skipping notification.")
+    """Helper to send any HTML formatted message to all configured Telegram chats (User + Ajay)."""
+    if not config.TELEGRAM_BOT_TOKEN:
+        logger.warning("Telegram Bot Token is missing! Skipping notification.")
         return False
 
+    chat_ids = getattr(config, "TELEGRAM_CHAT_IDS", [])
+    if not chat_ids:
+        if config.TELEGRAM_CHAT_ID:
+            chat_ids = [cid.strip() for cid in str(config.TELEGRAM_CHAT_ID).split(",") if cid.strip()]
+        else:
+            logger.warning("No Telegram Chat ID configured! Skipping notification.")
+            return False
+
     api_url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": config.TELEGRAM_CHAT_ID,
-        "text": message_html,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": False,
-    }
+    any_success = False
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(api_url, json=payload)
-            if resp.status_code == 200:
-                return True
-            else:
-                logger.error(f"Telegram API error {resp.status_code}: {resp.text}")
-                return False
+            for chat_id in chat_ids:
+                payload = {
+                    "chat_id": chat_id,
+                    "text": message_html,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": False,
+                }
+                try:
+                    resp = await client.post(api_url, json=payload)
+                    if resp.status_code == 200:
+                        any_success = True
+                    else:
+                        logger.error(f"Telegram API error {resp.status_code} for chat {chat_id}: {resp.text}")
+                except Exception as ce:
+                    logger.error(f"Failed to send Telegram message to chat {chat_id}: {ce}")
     except Exception as e:
-        logger.error(f"Failed to send Telegram message: {e}")
+        logger.error(f"Telegram client error: {e}")
         return False
+
+    return any_success
+
 
 
 async def send_startup_notification(engine_info: str = "🟢 Playwright Chromium Headless") -> bool:
@@ -301,6 +316,8 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
                 pattern = r'"name":\s*"[^"]*Wallet Code"[^}]*"outOfStock":\s*false|"outOfStock":\s*false[^}]*"name":\s*"[^"]*Wallet Code"'
                 if re.search(pattern, clean_html, re.IGNORECASE):
                     rooter_in_stock = True
+                    is_in = True
+                    is_out = False
                     logger.info("🟢 Rooter Next.js data confirmed PlayStation Wallet Code is in stock!")
             except Exception:
                 pass
@@ -321,10 +338,28 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
                             logger.info(f"🔴 Games The Shop filter confirms 0 items in stock ({btn_text.strip()})")
                             is_out = True
                             is_in = False
+                            active_buy_btn_found = False
                         else:
                             logger.info(f"🟢 Games The Shop filter confirms {in_stock_count} items in stock!")
                             is_in = True
                             is_out = False
+            except Exception:
+                pass
+
+        # 4. Check for StanShop (stanshop.co)
+        if "stanshop.co" in url:
+            try:
+                sold_out_count = content_text.count("sold out")
+                coupon_count = content_text.count("coupon worth")
+                if coupon_count > 0 and sold_out_count >= coupon_count:
+                    logger.info(f"🔴 StanShop all {coupon_count} denominations are sold out ({sold_out_count} sold out tags).")
+                    is_out = True
+                    is_in = False
+                    active_buy_btn_found = False
+                elif coupon_count > 0 and sold_out_count < coupon_count:
+                    logger.info(f"🟢 StanShop has stock! {coupon_count - sold_out_count} item(s) available.")
+                    is_in = True
+                    is_out = False
             except Exception:
                 pass
 
@@ -337,18 +372,19 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         elif is_in is None:
             is_in = any(keyword in content_text for keyword in in_keywords)
 
-
-        if active_buy_btn_found or rooter_in_stock:
+        # STRICT STOCK STATUS: is_out ALWAYS takes precedence over generic buttons
+        if is_out:
+            status = "OUT_OF_STOCK"
+        elif rooter_in_stock:
+            status = "IN_STOCK"
+        elif active_buy_btn_found:
             status = "IN_STOCK"
         elif is_in and not is_out:
             status = "IN_STOCK"
         elif is_in and is_out:
-            # If both in and out keywords exist, require active buy button / buy keywords
             status = "IN_STOCK" if any(k in content_text for k in buy_keywords) else "OUT_OF_STOCK"
         else:
-            # If not explicitly in stock, classify as OUT_OF_STOCK so restocks trigger properly
             status = "OUT_OF_STOCK"
-
 
         return {
             "platform": target["platform"],
@@ -430,17 +466,27 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
                         is_in = True
                         is_out = False
 
+            if "stanshop.co" in url:
+                sold_out_count = content_text.count("sold out")
+                coupon_count = content_text.count("coupon worth")
+                if coupon_count > 0 and sold_out_count >= coupon_count:
+                    is_out = True
+                    is_in = False
+                elif coupon_count > 0 and sold_out_count < coupon_count:
+                    is_in = True
+                    is_out = False
 
-            if rooter_in_stock:
-                status = "IN_STOCK"
-            elif is_out and not is_in:
+            if is_out:
                 status = "OUT_OF_STOCK"
+            elif rooter_in_stock:
+                status = "IN_STOCK"
             elif is_in and not is_out:
                 status = "IN_STOCK"
             elif is_in and is_out:
                 status = "IN_STOCK" if any(k in content_text for k in buy_keywords) else "OUT_OF_STOCK"
             else:
-                status = "OUT_OF_STOCK" if len(content_text) > 50 else "OUT_OF_STOCK"
+                status = "OUT_OF_STOCK"
+
 
 
             return {
