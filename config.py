@@ -21,8 +21,8 @@ TELEGRAM_CHAT_IDS = [cid.strip() for cid in TELEGRAM_CHAT_ID.split(",") if cid.s
 # ==========================================
 # 2. Monitoring & Bot Behavior Settings
 # ==========================================
-# Interval between monitoring loops in seconds (Default: 60s = 1 min for instant restock detection)
-CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "60"))
+# Interval between monitoring loops in seconds (Default: 30s for ultra-fast restock detection)
+CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "30"))
 
 
 # Delay between checking each website to prevent CPU spikes and rate limits (seconds)
