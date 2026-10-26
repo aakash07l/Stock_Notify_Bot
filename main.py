@@ -327,24 +327,52 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         is_in = None
 
         if "gamestheshop.com" in url:
+            # GTS catalog search cards always have a dummy "Add to Cart" (+) button, even when out of stock.
+            # Never trust generic buy buttons for GTS!
+            active_buy_btn_found = False
+            gts_matched = False
+
             try:
                 gts_stock_btn = page.locator("button:has-text('In Stock Only')").first
-                if await gts_stock_btn.is_visible(timeout=1000):
+                if await gts_stock_btn.is_visible(timeout=3000):
                     btn_text = await gts_stock_btn.inner_text()
-                    count_match = re.search(r'\((\d+)\)', btn_text)
+                    count_match = re.search(r'\(.*?(\d+).*?\)', btn_text)
                     if count_match:
                         in_stock_count = int(count_match.group(1))
+                        gts_matched = True
                         if in_stock_count == 0:
                             logger.info(f"🔴 Games The Shop filter confirms 0 items in stock ({btn_text.strip()})")
                             is_out = True
                             is_in = False
-                            active_buy_btn_found = False
                         else:
                             logger.info(f"🟢 Games The Shop filter confirms {in_stock_count} items in stock!")
                             is_in = True
                             is_out = False
             except Exception:
                 pass
+
+            # Fallback for GTS: check raw page HTML for 'In Stock Only (N)' with optional comments
+            if not gts_matched:
+                try:
+                    raw_html = await page.content()
+                    m = re.search(r'In Stock Only[^\(]*\([^\d]*(\d+)', raw_html, re.IGNORECASE)
+                    if m:
+                        in_stock_count = int(m.group(1))
+                        if in_stock_count == 0:
+                            logger.info(f"🔴 Games The Shop HTML confirms 0 items in stock ({m.group(0)})")
+                            is_out = True
+                            is_in = False
+                        else:
+                            logger.info(f"🟢 Games The Shop HTML confirms {in_stock_count} items in stock!")
+                            is_in = True
+                            is_out = False
+                    else:
+                        # If GTS search returns 0 in-stock filter, default to OUT_OF_STOCK
+                        is_out = True
+                        is_in = False
+                except Exception:
+                    is_out = True
+                    is_in = False
 
         # 4. Check for StanShop (stanshop.co)
         if "stanshop.co" in url:
@@ -381,8 +409,6 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
             status = "IN_STOCK"
         elif is_in and not is_out:
             status = "IN_STOCK"
-        elif is_in and is_out:
-            status = "IN_STOCK" if any(k in content_text for k in buy_keywords) else "OUT_OF_STOCK"
         else:
             status = "OUT_OF_STOCK"
 
@@ -457,7 +483,7 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
             is_in = any(keyword in content_text for keyword in in_keywords)
 
             if "gamestheshop.com" in url:
-                count_match = re.search(r'In Stock Only[^\d]*\((\d+)\)', resp.text, re.IGNORECASE)
+                count_match = re.search(r'In Stock Only[^\(]*\([^\d]*(\d+)', resp.text, re.IGNORECASE)
                 if count_match:
                     if int(count_match.group(1)) == 0:
                         is_out = True
@@ -465,6 +491,9 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
                     else:
                         is_in = True
                         is_out = False
+                else:
+                    is_out = True
+                    is_in = False
 
             if "stanshop.co" in url:
                 sold_out_count = content_text.count("sold out")
@@ -482,8 +511,6 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
                 status = "IN_STOCK"
             elif is_in and not is_out:
                 status = "IN_STOCK"
-            elif is_in and is_out:
-                status = "IN_STOCK" if any(k in content_text for k in buy_keywords) else "OUT_OF_STOCK"
             else:
                 status = "OUT_OF_STOCK"
 

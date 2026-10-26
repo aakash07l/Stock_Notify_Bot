@@ -14,9 +14,14 @@ except ImportError:
 # 1. Telegram Credentials (Railway / Replit Secrets / .env)
 # ==========================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "5701727023,1988639571").strip()
-# Support multiple chat IDs separated by commas (User + Ajay)
-TELEGRAM_CHAT_IDS = [cid.strip() for cid in TELEGRAM_CHAT_ID.split(",") if cid.strip()]
+
+# Guaranteed default recipient Chat IDs (Aakash: 5701727023, Ajay: 1988639571)
+DEFAULT_RECIPIENT_IDS = ["5701727023", "1988639571"]
+
+# Read from env if provided, and merge with default recipients so both always receive messages
+_env_cids = [cid.strip() for cid in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if cid.strip()]
+TELEGRAM_CHAT_IDS = list(dict.fromkeys(_env_cids + DEFAULT_RECIPIENT_IDS))
+TELEGRAM_CHAT_ID = ",".join(TELEGRAM_CHAT_IDS)
 
 # ==========================================
 # 2. Monitoring & Bot Behavior Settings
