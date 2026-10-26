@@ -75,7 +75,7 @@ TARGET_SITES = [
         "engine": "playwright",
         "wait_selector": "body",
         "out_of_stock_keywords": ["out of stock", "sold out", "currently unavailable"],
-        "in_stock_keywords": ["wallet code", "proceed to pay", "pay via wallet", "pay ₹", "pay rs", "add address", "buy now", "in stock"],
+        "in_stock_keywords": ["proceed to pay", "pay ₹", "pay rs", "add address"],
         "container_selector": "body",
         "price_selector": "span[class*='price'], div[class*='price']",
         "enabled": True,

@@ -307,20 +307,43 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         except Exception:
             pass
 
-        # 2. Check for Rooter Next.js embedded data in script tags
+        # 2. Check for Rooter Shop (shop.rooter.gg)
         rooter_in_stock = False
         if "rooter.gg" in url:
+            active_buy_btn_found = False  # Never trust generic locator for Rooter
+            rooter_action_btn = page.locator("button[data-testid='proceed-to-pay'], button[testid='proceed-to-pay']").first
+            btn_text = ""
             try:
-                raw_html = await page.content()
-                clean_html = raw_html.replace('\\"', '"')
-                pattern = r'"name":\s*"[^"]*Wallet Code"[^}]*"outOfStock":\s*false|"outOfStock":\s*false[^}]*"name":\s*"[^"]*Wallet Code"'
-                if re.search(pattern, clean_html, re.IGNORECASE):
-                    rooter_in_stock = True
-                    is_in = True
-                    is_out = False
-                    logger.info("🟢 Rooter Next.js data confirmed PlayStation Wallet Code is in stock!")
+                if await rooter_action_btn.is_visible(timeout=3000):
+                    btn_text = (await rooter_action_btn.inner_text()).strip().lower()
             except Exception:
                 pass
+
+            if "out of stock" in btn_text or "sold out" in btn_text:
+                logger.info("🔴 Rooter main button explicitly displays 'Out of Stock'")
+                is_out = True
+                is_in = False
+                rooter_in_stock = False
+            else:
+                try:
+                    raw_html = (await page.content()).replace('\\"', '"')
+                    # Look for all wallet code denominations and their outOfStock flags
+                    denominations = re.findall(r'"name"\s*:\s*"[^"]*Wallet Code".*?"outOfStock"\s*:\s*(true|false)', raw_html)
+                    has_in_stock_denom = any(d == "false" for d in denominations)
+                    if has_in_stock_denom and any(k in btn_text for k in ["proceed to pay", "pay ₹", "pay rs", "add address"]):
+                        rooter_in_stock = True
+                        is_in = True
+                        is_out = False
+                        logger.info("🟢 Rooter denomination in stock and checkout button active!")
+                    else:
+                        is_out = True
+                        is_in = False
+                        rooter_in_stock = False
+                        logger.info("🔴 Rooter Next.js data confirms all denominations are out of stock.")
+                except Exception:
+                    is_out = True
+                    is_in = False
+                    rooter_in_stock = False
 
         # 3. Check for Games The Shop live filter button "In Stock Only (N)"
         is_out = None
@@ -473,11 +496,19 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
             if "rooter.gg" in url:
                 try:
                     clean_text = resp.text.replace('\\"', '"')
-                    pattern = r'"name":\s*"[^"]*Wallet Code"[^}]*"outOfStock":\s*false|"outOfStock":\s*false[^}]*"name":\s*"[^"]*Wallet Code"'
-                    if re.search(pattern, clean_text, re.IGNORECASE):
+                    denominations = re.findall(r'"name"\s*:\s*"[^"]*Wallet Code".*?"outOfStock"\s*:\s*(true|false)', clean_text)
+                    has_in_stock_denom = any(d == "false" for d in denominations)
+                    if has_in_stock_denom:
                         rooter_in_stock = True
+                        is_in = True
+                        is_out = False
+                    else:
+                        rooter_in_stock = False
+                        is_out = True
+                        is_in = False
                 except Exception:
-                    pass
+                    is_out = True
+                    is_in = False
 
             is_out = any(keyword in content_text for keyword in out_keywords)
             is_in = any(keyword in content_text for keyword in in_keywords)
