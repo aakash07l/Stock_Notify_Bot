@@ -424,7 +424,13 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
             is_in = any(keyword in content_text for keyword in in_keywords)
 
         # STRICT STOCK STATUS: is_out ALWAYS takes precedence over generic buttons
-        if is_out:
+        if "gamestheshop.com" in url:
+            # Games The Shop MUST be strictly OUT_OF_STOCK unless in_stock_count > 0 was verified!
+            if is_in is True and is_out is False:
+                status = "IN_STOCK"
+            else:
+                status = "OUT_OF_STOCK"
+        elif is_out:
             status = "OUT_OF_STOCK"
         elif rooter_in_stock:
             status = "IN_STOCK"
@@ -536,7 +542,12 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
                     is_in = True
                     is_out = False
 
-            if is_out:
+            if "gamestheshop.com" in url:
+                if is_in is True and is_out is False:
+                    status = "IN_STOCK"
+                else:
+                    status = "OUT_OF_STOCK"
+            elif is_out:
                 status = "OUT_OF_STOCK"
             elif rooter_in_stock:
                 status = "IN_STOCK"
