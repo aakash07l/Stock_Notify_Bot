@@ -99,7 +99,7 @@ TARGET_SITES = [
         "platform": "JioGames Store",
         "item_name": "PlayStation Wallet Voucher",
         # Direct JioGames store products catalogue
-        "url": "https://store.jiogames.com/products",
+        "url": "https://store.jiogames.com/",
         "engine": "playwright",
         "wait_selector": "body",
         "out_of_stock_keywords": ["out of stock", "sold out", "coming soon"],
