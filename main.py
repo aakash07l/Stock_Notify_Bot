@@ -7,6 +7,7 @@ import sys
 import os
 import re
 import json
+import time
 import asyncio
 import logging
 import datetime
@@ -39,6 +40,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 
 # Global state tracking for keep-alive dashboard
 LATEST_STOCK_STATE: Dict[str, Any] = {}
+LAST_CHECKED_TIMES: Dict[str, float] = {}
 BOT_START_TIME = datetime.datetime.now()
 TOTAL_CYCLES_COMPLETED = 0
 
@@ -414,6 +416,59 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
             except Exception:
                 pass
 
+        # 5. Check for Blinkit (blinkit.com - Mumbai location)
+        if "blinkit.com" in url:
+            active_buy_btn_found = False
+            try:
+                detect_btn = page.locator("button:has-text('Detect my location')").first
+                if await detect_btn.is_visible(timeout=1500):
+                    await detect_btn.click()
+                    await page.wait_for_timeout(2500)
+                    content_text = (await page.inner_text("body")).lower()
+            except Exception:
+                pass
+
+            if "playstation instant voucher" in content_text:
+                idx = content_text.find("playstation instant voucher")
+                surrounding = content_text[max(0, idx-100):min(len(content_text), idx+150)]
+                if "out of stock" in surrounding or "currently unavailable" in surrounding:
+                    is_out = True
+                    is_in = False
+                elif "add" in surrounding:
+                    is_in = True
+                    is_out = False
+                else:
+                    is_out = True
+                    is_in = False
+            else:
+                is_out = True
+                is_in = False
+
+        # 6. Check for Flipkart (flipkart.com - anti-captcha safe)
+        if "flipkart.com" in url:
+            active_buy_btn_found = False
+            try:
+                cards = await page.locator("div._75nlfW, div[data-id]").all()
+                psn_found = 0
+                in_stock_count = 0
+                for c in cards:
+                    txt = (await c.inner_text()).lower()
+                    if "playstation" in txt and ("gift card" in txt or "voucher" in txt or "inr" in txt):
+                        psn_found += 1
+                        if "currently unavailable" in txt or "coming soon" in txt or "out of stock" in txt:
+                            pass
+                        else:
+                            in_stock_count += 1
+                if psn_found > 0 and in_stock_count > 0:
+                    is_in = True
+                    is_out = False
+                else:
+                    is_out = True
+                    is_in = False
+            except Exception:
+                is_out = True
+                is_in = False
+
         # Determine stock status
         if is_out is None and is_in is None:
             is_out = any(keyword in content_text for keyword in out_keywords)
@@ -426,6 +481,16 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         # STRICT STOCK STATUS: is_out ALWAYS takes precedence over generic buttons
         if "gamestheshop.com" in url:
             # Games The Shop MUST be strictly OUT_OF_STOCK unless in_stock_count > 0 was verified!
+            if is_in is True and is_out is False:
+                status = "IN_STOCK"
+            else:
+                status = "OUT_OF_STOCK"
+        elif "blinkit.com" in url:
+            if is_in is True and is_out is False:
+                status = "IN_STOCK"
+            else:
+                status = "OUT_OF_STOCK"
+        elif "flipkart.com" in url:
             if is_in is True and is_out is False:
                 status = "IN_STOCK"
             else:
@@ -704,6 +769,28 @@ async def run_monitor_cycle(browser: Optional[Browser], context: Optional[Browse
         url = target["url"]
         engine = target.get("engine", "playwright").lower()
 
+        # Check per-target throttling (e.g. Flipkart cooldown to avoid captchas)
+        min_interval = target.get("min_interval_seconds", 0)
+        now_ts = time.time()
+        last_chk = LAST_CHECKED_TIMES.get(target_id, 0)
+
+        if not is_first_cycle and min_interval > 0 and (now_ts - last_chk) < min_interval:
+            prev_info = state.get(target_id, {})
+            current_status = prev_info.get("status", "OUT_OF_STOCK")
+            price = prev_info.get("last_price", "")
+            cooldown_left = int(min_interval - (now_ts - last_chk))
+            logger.info(f"⏳ [{platform}] Cooldown active ({cooldown_left}s remaining to prevent captcha). Reusing status: {current_status}")
+            cycle_results.append({
+                "platform": platform,
+                "item_name": item_name,
+                "status": current_status,
+                "price": price,
+                "url": url,
+            })
+            continue
+
+        LAST_CHECKED_TIMES[target_id] = now_ts
+
         logger.info(f"Checking [{platform}] - {item_name} (via {engine})...")
 
         result = {}
@@ -826,6 +913,10 @@ async def main():
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             viewport={"width": 1280, "height": 720},
+            geolocation={"latitude": 19.0760, "longitude": 72.8777},
+            permissions=["geolocation"],
+            locale="en-IN",
+            timezone_id="Asia/Kolkata",
         )
         logger.info("🌐 Playwright Headless Chromium successfully initialized.")
     except Exception as e:

@@ -136,5 +136,35 @@ TARGET_SITES = [
         "price_selector": "",
         "enabled": True,
     },
+    {
+        "id": "blinkit_psn",
+        "platform": "Blinkit",
+        "item_name": "Sony PlayStation Instant Voucher (Mumbai)",
+        # Direct Blinkit PlayStation Instant Voucher search in Mumbai
+        "url": "https://blinkit.com/s/?q=playstation+voucher",
+        "engine": "playwright",
+        "wait_selector": "body",
+        "out_of_stock_keywords": ["out of stock", "currently unavailable"],
+        "in_stock_keywords": ["add", "add to cart"],
+        "container_selector": "body",
+        "price_selector": "",
+        "min_interval_seconds": 60,
+        "enabled": True,
+    },
+    {
+        "id": "flipkart_psn",
+        "platform": "Flipkart",
+        "item_name": "PlayStation Network Wallet Voucher",
+        # Direct Flipkart digital PlayStation gift cards catalog
+        "url": "https://www.flipkart.com/search?q=playstation+network+wallet+voucher",
+        "engine": "playwright",
+        "wait_selector": "body",
+        "out_of_stock_keywords": ["currently unavailable", "coming soon", "out of stock"],
+        "in_stock_keywords": ["buy now", "add to cart"],
+        "container_selector": "body",
+        "price_selector": "",
+        "min_interval_seconds": 120,  # 2 minute cooling period to prevent captchas
+        "enabled": True,
+    },
 ]
 
