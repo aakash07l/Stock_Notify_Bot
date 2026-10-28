@@ -399,24 +399,7 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
                     is_out = True
                     is_in = False
 
-        # 4. Check for StanShop (stanshop.co)
-        if "stanshop.co" in url:
-            try:
-                sold_out_count = content_text.count("sold out")
-                coupon_count = content_text.count("coupon worth")
-                if coupon_count > 0 and sold_out_count >= coupon_count:
-                    logger.info(f"🔴 StanShop all {coupon_count} denominations are sold out ({sold_out_count} sold out tags).")
-                    is_out = True
-                    is_in = False
-                    active_buy_btn_found = False
-                elif coupon_count > 0 and sold_out_count < coupon_count:
-                    logger.info(f"🟢 StanShop has stock! {coupon_count - sold_out_count} item(s) available.")
-                    is_in = True
-                    is_out = False
-            except Exception:
-                pass
-
-        # 5. Check for Blinkit (blinkit.com - Mumbai location)
+        # 4. Check for Blinkit (blinkit.com - Mumbai location)
         if "blinkit.com" in url:
             active_buy_btn_found = False
             try:
@@ -444,7 +427,7 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
                 is_out = True
                 is_in = False
 
-        # 6. Check for Flipkart (flipkart.com - anti-captcha safe)
+        # 5. Check for Flipkart (flipkart.com - anti-captcha safe)
         if "flipkart.com" in url:
             active_buy_btn_found = False
             try:

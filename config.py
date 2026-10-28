@@ -95,20 +95,6 @@ TARGET_SITES = [
         "enabled": True,
     },
     {
-        "id": "jiogames_psn_store",
-        "platform": "JioGames Store",
-        "item_name": "PlayStation Wallet Voucher",
-        # Direct JioGames store products catalogue
-        "url": "https://store.jiogames.com/",
-        "engine": "playwright",
-        "wait_selector": "body",
-        "out_of_stock_keywords": ["out of stock", "sold out", "coming soon"],
-        "in_stock_keywords": ["playstation", "buy now", "get voucher", "add to cart"],
-        "container_selector": "body",
-        "price_selector": "",
-        "enabled": True,
-    },
-    {
         "id": "digistore_psn",
         "platform": "Digistore",
         "item_name": "PlayStation Network Wallet Topup",
@@ -120,20 +106,6 @@ TARGET_SITES = [
         "in_stock_keywords": ["add to cart", "buy now", "select options"],
         "container_selector": "body",
         "price_selector": ".price, span.woocommerce-Price-amount",
-        "enabled": True,
-    },
-    {
-        "id": "stanshop_psn",
-        "platform": "StanShop",
-        "item_name": "PlayStation PSN Gift Card",
-        # Direct Indian PlayStation gift cards on StanShop
-        "url": "https://www.stanshop.co/playstation-psn-gift-card-in-india",
-        "engine": "playwright",
-        "wait_selector": "body",
-        "out_of_stock_keywords": ["sold out", "out of stock", "currently unavailable"],
-        "in_stock_keywords": ["buy now", "coupon worth", "instant delivery"],
-        "container_selector": "body",
-        "price_selector": "",
         "enabled": True,
     },
     {
