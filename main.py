@@ -128,11 +128,16 @@ async def send_startup_notification(engine_info: str = "🟢 Playwright Chromium
 
     platforms_list = ", ".join([s["platform"] for s in config.TARGET_SITES if s.get("enabled", True)])
 
+    if config.CHECK_INTERVAL_SECONDS >= 60:
+        interval_str = f"Every {config.CHECK_INTERVAL_SECONDS // 60} minute(s)"
+    else:
+        interval_str = f"Every {config.CHECK_INTERVAL_SECONDS} seconds"
+
     msg = (
         f"🤖 <b>PlayStation Stock Monitor Started!</b>\n\n"
         f"📡 <b>Status:</b> 🟢 <b>Online & Running 24/7 (Railway/Cloud)</b>\n"
         f"🌐 <b>Engine:</b> {engine_info}\n"
-        f"⏱️ <b>Check Interval:</b> Every {config.CHECK_INTERVAL_SECONDS // 60} minutes\n"
+        f"⏱️ <b>Check Interval:</b> {interval_str}\n"
         f"🎯 <b>Tracking Platforms:</b> {platforms_list}\n"
         f"⏰ <b>Started At:</b> {formatted_time}\n\n"
         f"🔄 <i>Running initial sweep now... You will receive a summary shortly!</i>"
@@ -268,6 +273,10 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
             except Exception:
                 content_text = ""
 
+        # Default stock status flags (custom logic per platform may override these)
+        is_out = None
+        is_in = None
+
         # Extract price if selector is configured
         price = ""
         if price_sel:
@@ -311,46 +320,68 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
 
         # 2. Check for Rooter Shop (shop.rooter.gg)
         rooter_in_stock = False
+        in_stock_denominations = []
         if "rooter.gg" in url:
             active_buy_btn_found = False  # Never trust generic locator for Rooter
-            rooter_action_btn = page.locator("button[data-testid='proceed-to-pay'], button[testid='proceed-to-pay']").first
-            btn_text = ""
             try:
-                if await rooter_action_btn.is_visible(timeout=3000):
-                    btn_text = (await rooter_action_btn.inner_text()).strip().lower()
-            except Exception:
-                pass
+                raw_html = (await page.content()).replace('\\"', '"')
+                # 1. Inspect Next.js backend JSON inventory data
+                # Matches: "name":"Rs.1000 Wallet Code", ... "outOfStock":false
+                json_matches = re.findall(
+                    r'"name"\s*:\s*"([^"]*Wallet Code)"[^\}]*?"outOfStock"\s*:\s*(true|false)',
+                    raw_html,
+                    re.IGNORECASE
+                )
+                for name, oos in json_matches:
+                    if oos.lower() == "false":
+                        in_stock_denominations.append(name.strip())
 
-            if "out of stock" in btn_text or "sold out" in btn_text:
-                logger.info("🔴 Rooter main button explicitly displays 'Out of Stock'")
-                is_out = True
-                is_in = False
-                rooter_in_stock = False
-            else:
-                try:
-                    raw_html = (await page.content()).replace('\\"', '"')
-                    # Look for all wallet code denominations and their outOfStock flags
-                    denominations = re.findall(r'"name"\s*:\s*"[^"]*Wallet Code".*?"outOfStock"\s*:\s*(true|false)', raw_html)
-                    has_in_stock_denom = any(d == "false" for d in denominations)
-                    if has_in_stock_denom and any(k in btn_text for k in ["proceed to pay", "pay ₹", "pay rs", "add address"]):
-                        rooter_in_stock = True
-                        is_in = True
-                        is_out = False
-                        logger.info("🟢 Rooter denomination in stock and checkout button active!")
-                    else:
-                        is_out = True
-                        is_in = False
-                        rooter_in_stock = False
-                        logger.info("🔴 Rooter Next.js data confirms all denominations are out of stock.")
-                except Exception:
-                    is_out = True
-                    is_in = False
+                # 2. Also inspect visible UI chips on the page
+                chips = await page.evaluate("""() => {
+                    const results = [];
+                    document.querySelectorAll("div, button").forEach(el => {
+                        const t = el.innerText || '';
+                        if (t.includes('Wallet Code') && (t.includes('1000') || t.includes('2000') || t.includes('3000') || t.includes('4000') || t.includes('5000'))) {
+                            if (el.children.length >= 1 && el.children.length <= 4) {
+                                results.push({
+                                    text: t.replace(/\\n/g, ' ').trim(),
+                                    is_out: t.toLowerCase().includes('out of stock') || t.toLowerCase().includes('sold out')
+                                });
+                            }
+                        }
+                    });
+                    return results;
+                }""")
+                for c in chips:
+                    if not c.get("is_out") and "wallet code" in c.get("text", "").lower():
+                        in_stock_denominations.append(c.get("text"))
+
+                if in_stock_denominations:
+                    rooter_in_stock = True
+                    is_in = True
+                    is_out = False
+                    unique_denoms = list(dict.fromkeys(in_stock_denominations))
+                    # Format clean price tag for Telegram alert (e.g. ₹1,000, ₹4,000)
+                    clean_tags = []
+                    for d in unique_denoms:
+                        m = re.search(r'Rs\.?\s*(\d+)', d, re.IGNORECASE)
+                        if m:
+                            clean_tags.append(f"₹{m.group(1)}")
+                    if clean_tags:
+                        price = ", ".join(list(dict.fromkeys(clean_tags)))
+                    logger.info(f"🟢 Rooter has active stock! In-stock denominations: {unique_denoms}")
+                else:
                     rooter_in_stock = False
+                    is_in = False
+                    is_out = True
+                    logger.info("🔴 Rooter confirmed: All denominations are out of stock.")
+            except Exception as e:
+                logger.error(f"Error checking Rooter denominations: {e}")
+                rooter_in_stock = False
+                is_in = False
+                is_out = True
 
         # 3. Check for Games The Shop live filter button "In Stock Only (N)"
-        is_out = None
-        is_in = None
-
         if "gamestheshop.com" in url:
             # GTS catalog search cards always have a dummy "Add to Cart" (+) button, even when out of stock.
             # Never trust generic buy buttons for GTS!
@@ -461,8 +492,14 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
         elif is_in is None:
             is_in = any(keyword in content_text for keyword in in_keywords)
 
-        # STRICT STOCK STATUS: is_out ALWAYS takes precedence over generic buttons
-        if "gamestheshop.com" in url:
+        # STRICT STOCK STATUS DETERMINATION
+        if "rooter.gg" in url:
+            # Rooter status is strictly determined by denomination availability
+            if rooter_in_stock:
+                status = "IN_STOCK"
+            else:
+                status = "OUT_OF_STOCK"
+        elif "gamestheshop.com" in url:
             # Games The Shop MUST be strictly OUT_OF_STOCK unless in_stock_count > 0 was verified!
             if is_in is True and is_out is False:
                 status = "IN_STOCK"
@@ -480,8 +517,6 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
                 status = "OUT_OF_STOCK"
         elif is_out:
             status = "OUT_OF_STOCK"
-        elif rooter_in_stock:
-            status = "IN_STOCK"
         elif active_buy_btn_found:
             status = "IN_STOCK"
         elif is_in and not is_out:
@@ -547,20 +582,35 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
             ]
 
             rooter_in_stock = False
+            in_stock_denominations = []
             if "rooter.gg" in url:
                 try:
                     clean_text = resp.text.replace('\\"', '"')
-                    denominations = re.findall(r'"name"\s*:\s*"[^"]*Wallet Code".*?"outOfStock"\s*:\s*(true|false)', clean_text)
-                    has_in_stock_denom = any(d == "false" for d in denominations)
-                    if has_in_stock_denom:
+                    json_matches = re.findall(
+                        r'"name"\s*:\s*"([^"]*Wallet Code)"[^\}]*?"outOfStock"\s*:\s*(true|false)',
+                        clean_text,
+                        re.IGNORECASE
+                    )
+                    for name, oos in json_matches:
+                        if oos.lower() == "false":
+                            in_stock_denominations.append(name.strip())
+                    if in_stock_denominations:
                         rooter_in_stock = True
                         is_in = True
                         is_out = False
+                        clean_tags = []
+                        for d in in_stock_denominations:
+                            m = re.search(r'Rs\.?\s*(\d+)', d, re.IGNORECASE)
+                            if m:
+                                clean_tags.append(f"₹{m.group(1)}")
+                        if clean_tags:
+                            price = ", ".join(list(dict.fromkeys(clean_tags)))
                     else:
                         rooter_in_stock = False
                         is_out = True
                         is_in = False
                 except Exception:
+                    rooter_in_stock = False
                     is_out = True
                     is_in = False
 
@@ -580,24 +630,19 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
                     is_out = True
                     is_in = False
 
-            if "stanshop.co" in url:
-                sold_out_count = content_text.count("sold out")
-                coupon_count = content_text.count("coupon worth")
-                if coupon_count > 0 and sold_out_count >= coupon_count:
-                    is_out = True
-                    is_in = False
-                elif coupon_count > 0 and sold_out_count < coupon_count:
-                    is_in = True
-                    is_out = False
-
-            if "gamestheshop.com" in url:
+            if "rooter.gg" in url:
+                if rooter_in_stock:
+                    status = "IN_STOCK"
+                else:
+                    status = "OUT_OF_STOCK"
+            elif "gamestheshop.com" in url:
                 if is_in is True and is_out is False:
                     status = "IN_STOCK"
                 else:
                     status = "OUT_OF_STOCK"
             elif is_out:
                 status = "OUT_OF_STOCK"
-            elif rooter_in_stock:
+            elif active_buy_btn_found:
                 status = "IN_STOCK"
             elif is_in and not is_out:
                 status = "IN_STOCK"
