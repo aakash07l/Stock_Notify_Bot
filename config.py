@@ -29,8 +29,9 @@ TELEGRAM_CHAT_ID = ",".join(TELEGRAM_CHAT_IDS)
 # Interval between monitoring loops in seconds (Default: 30s for ultra-fast restock detection)
 CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "30"))
 
-# Delay between checking each website to prevent CPU spikes (seconds)
-SITE_CHECK_DELAY_SECONDS = int(os.getenv("SITE_CHECK_DELAY_SECONDS", "2"))
+
+# Delay between checking each website to prevent CPU spikes and rate limits (seconds)
+SITE_CHECK_DELAY_SECONDS = int(os.getenv("SITE_CHECK_DELAY_SECONDS", "4"))
 
 # If True, sends an alert on startup for any items currently In Stock (Default: True)
 NOTIFY_ON_INITIAL_RUN = os.getenv("NOTIFY_ON_INITIAL_RUN", "True").lower() in ("true", "1", "yes")
