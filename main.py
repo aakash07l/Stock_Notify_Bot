@@ -427,31 +427,6 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
                 is_out = True
                 is_in = False
 
-        # 5. Check for Flipkart (flipkart.com - anti-captcha safe)
-        if "flipkart.com" in url:
-            active_buy_btn_found = False
-            try:
-                cards = await page.locator("div._75nlfW, div[data-id]").all()
-                psn_found = 0
-                in_stock_count = 0
-                for c in cards:
-                    txt = (await c.inner_text()).lower()
-                    if "playstation" in txt and ("gift card" in txt or "voucher" in txt or "inr" in txt):
-                        psn_found += 1
-                        if "currently unavailable" in txt or "coming soon" in txt or "out of stock" in txt:
-                            pass
-                        else:
-                            in_stock_count += 1
-                if psn_found > 0 and in_stock_count > 0:
-                    is_in = True
-                    is_out = False
-                else:
-                    is_out = True
-                    is_in = False
-            except Exception:
-                is_out = True
-                is_in = False
-
         # Determine stock status
         if is_out is None and is_in is None:
             is_out = any(keyword in content_text for keyword in out_keywords)
@@ -469,11 +444,6 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
             else:
                 status = "OUT_OF_STOCK"
         elif "blinkit.com" in url:
-            if is_in is True and is_out is False:
-                status = "IN_STOCK"
-            else:
-                status = "OUT_OF_STOCK"
-        elif "flipkart.com" in url:
             if is_in is True and is_out is False:
                 status = "IN_STOCK"
             else:
@@ -752,7 +722,7 @@ async def run_monitor_cycle(browser: Optional[Browser], context: Optional[Browse
         url = target["url"]
         engine = target.get("engine", "playwright").lower()
 
-        # Check per-target throttling (e.g. Flipkart cooldown to avoid captchas)
+        # Check per-target throttling (e.g. cooldown to avoid rate limits)
         min_interval = target.get("min_interval_seconds", 0)
         now_ts = time.time()
         last_chk = LAST_CHECKED_TIMES.get(target_id, 0)
