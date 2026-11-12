@@ -347,59 +347,10 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
                     is_in = False
                     rooter_in_stock = False
 
-        # 3. Check for Games The Shop live filter button "In Stock Only (N)"
         is_out = None
         is_in = None
 
-        if "gamestheshop.com" in url:
-            # GTS catalog search cards always have a dummy "Add to Cart" (+) button, even when out of stock.
-            # Never trust generic buy buttons for GTS!
-            active_buy_btn_found = False
-            gts_matched = False
-
-            try:
-                gts_stock_btn = page.locator("button:has-text('In Stock Only')").first
-                if await gts_stock_btn.is_visible(timeout=3000):
-                    btn_text = await gts_stock_btn.inner_text()
-                    count_match = re.search(r'\(.*?(\d+).*?\)', btn_text)
-                    if count_match:
-                        in_stock_count = int(count_match.group(1))
-                        gts_matched = True
-                        if in_stock_count == 0:
-                            logger.info(f"🔴 Games The Shop filter confirms 0 items in stock ({btn_text.strip()})")
-                            is_out = True
-                            is_in = False
-                        else:
-                            logger.info(f"🟢 Games The Shop filter confirms {in_stock_count} items in stock!")
-                            is_in = True
-                            is_out = False
-            except Exception:
-                pass
-
-            # Fallback for GTS: check raw page HTML for 'In Stock Only (N)' with optional comments
-            if not gts_matched:
-                try:
-                    raw_html = await page.content()
-                    m = re.search(r'In Stock Only[^\(]*\([^\d]*(\d+)', raw_html, re.IGNORECASE)
-                    if m:
-                        in_stock_count = int(m.group(1))
-                        if in_stock_count == 0:
-                            logger.info(f"🔴 Games The Shop HTML confirms 0 items in stock ({m.group(0)})")
-                            is_out = True
-                            is_in = False
-                        else:
-                            logger.info(f"🟢 Games The Shop HTML confirms {in_stock_count} items in stock!")
-                            is_in = True
-                            is_out = False
-                    else:
-                        # If GTS search returns 0 in-stock filter, default to OUT_OF_STOCK
-                        is_out = True
-                        is_in = False
-                except Exception:
-                    is_out = True
-                    is_in = False
-
-        # 4. Check for Blinkit (blinkit.com - Mumbai location)
+        # 3. Check for Blinkit (blinkit.com - Mumbai location)
         if "blinkit.com" in url:
             active_buy_btn_found = False
             try:
@@ -437,13 +388,7 @@ async def check_target_playwright(context: BrowserContext, target: Dict[str, Any
             is_in = any(keyword in content_text for keyword in in_keywords)
 
         # STRICT STOCK STATUS: is_out ALWAYS takes precedence over generic buttons
-        if "gamestheshop.com" in url:
-            # Games The Shop MUST be strictly OUT_OF_STOCK unless in_stock_count > 0 was verified!
-            if is_in is True and is_out is False:
-                status = "IN_STOCK"
-            else:
-                status = "OUT_OF_STOCK"
-        elif "blinkit.com" in url:
+        if "blinkit.com" in url:
             if is_in is True and is_out is False:
                 status = "IN_STOCK"
             else:
@@ -537,19 +482,6 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
             is_out = any(keyword in content_text for keyword in out_keywords)
             is_in = any(keyword in content_text for keyword in in_keywords)
 
-            if "gamestheshop.com" in url:
-                count_match = re.search(r'In Stock Only[^\(]*\([^\d]*(\d+)', resp.text, re.IGNORECASE)
-                if count_match:
-                    if int(count_match.group(1)) == 0:
-                        is_out = True
-                        is_in = False
-                    else:
-                        is_in = True
-                        is_out = False
-                else:
-                    is_out = True
-                    is_in = False
-
             if "stanshop.co" in url:
                 sold_out_count = content_text.count("sold out")
                 coupon_count = content_text.count("coupon worth")
@@ -560,12 +492,7 @@ async def check_target_requests(target: Dict[str, Any]) -> Dict[str, Any]:
                     is_in = True
                     is_out = False
 
-            if "gamestheshop.com" in url:
-                if is_in is True and is_out is False:
-                    status = "IN_STOCK"
-                else:
-                    status = "OUT_OF_STOCK"
-            elif is_out:
+            if is_out:
                 status = "OUT_OF_STOCK"
             elif rooter_in_stock:
                 status = "IN_STOCK"

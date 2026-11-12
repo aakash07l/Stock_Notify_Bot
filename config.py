@@ -81,20 +81,6 @@ TARGET_SITES = [
         "enabled": True,
     },
     {
-        "id": "gamestheshop_psn",
-        "platform": "Games The Shop",
-        "item_name": "PlayStation Store Gift Cards",
-        # Direct PlayStation store digital products search on GTS
-        "url": "https://www.gamestheshop.com/search?condition=Digital&platforms=PlayStation%2CPS5%2CPS4%2CPSN",
-        "engine": "playwright",
-        "wait_selector": "body",
-        "out_of_stock_keywords": ["in stock only (0)", "currently out of stock", "sold out", "out of stock", "(0)"],
-        "in_stock_keywords": ["in stock only (1)", "in stock only (2)", "in stock only (3)", "in stock only (4)", "in stock only (5)"],
-        "container_selector": "body",
-        "price_selector": ".price, .special-price",
-        "enabled": True,
-    },
-    {
         "id": "digistore_psn",
         "platform": "Digistore",
         "item_name": "PlayStation Network Wallet Topup",
