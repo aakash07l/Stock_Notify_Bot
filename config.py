@@ -1,113 +1,65 @@
 """
-Configuration for PlayStation Gift Card Stock Monitor.
-Define target websites, CSS selectors, alert thresholds, and Replit/Railway runtime settings.
+Configuration for PlayStation Gift Card Stock Monitor & Trigger Dispatcher (Bot 1).
+Monitors Rooter Shop 24/7 without authentication, alerts Telegram, and instantly triggers Buy Bot (Bot 2).
 """
 
 import os
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+from pathlib import Path
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent
+ENV_PATH = BASE_DIR / ".env"
+load_dotenv(dotenv_path=ENV_PATH)
 
 # ==========================================
-# 1. Telegram Credentials (Railway / Replit Secrets / .env)
+# 1. Telegram Credentials (Stock Tracker Bot)
 # ==========================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8971931761:AAHZEBDz0QCq6WadUQa8Foiw4Gc0mtU_Css").strip()
 
-# Guaranteed default recipient Chat IDs (Aakash: 5701727023, Ajay: 1988639571)
+# Target Telegram Chat IDs (Aakash & Ajay)
 DEFAULT_RECIPIENT_IDS = ["5701727023", "1988639571"]
-
-# Read from env if provided, and merge with default recipients so both always receive messages
 _env_cids = [cid.strip() for cid in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if cid.strip()]
 TELEGRAM_CHAT_IDS = list(dict.fromkeys(_env_cids + DEFAULT_RECIPIENT_IDS))
 TELEGRAM_CHAT_ID = ",".join(TELEGRAM_CHAT_IDS)
 
 # ==========================================
-# 2. Monitoring & Bot Behavior Settings
+# 2. Inter-Bot Webhook Communication (Bot 1 -> Bot 2)
 # ==========================================
-# Interval between monitoring loops in seconds (Default: 30s for ultra-fast restock detection)
-CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "30"))
+# Local HTTP Webhook to trigger Bot 2 on the same AWS EC2 machine (<2ms latency)
+BUY_BOT_WEBHOOK_URL = os.getenv("BUY_BOT_WEBHOOK_URL", "http://127.0.0.1:5000/webhook/stock").strip()
+INTERNAL_SECRET = os.getenv("INTERNAL_SECRET", "psn_sniper_secret_key_2026").strip()
 
+# ==========================================
+# 3. Restock Target & Monitoring Settings
+# ==========================================
+# Target Denomination: 1000 (₹1,000 PlayStation Card)
+TARGET_DENOMINATION = int(os.getenv("TARGET_DENOMINATION", "1000"))
+# Target Quantity to buy: 2 cards = ₹2,000
+TARGET_QUANTITY = int(os.getenv("TARGET_QUANTITY", "2"))
 
-# Delay between checking each website to prevent CPU spikes and rate limits (seconds)
-SITE_CHECK_DELAY_SECONDS = int(os.getenv("SITE_CHECK_DELAY_SECONDS", "4"))
+# Interval between checks in seconds (3 seconds for ultra-fast restock detection)
+CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "3"))
 
-# If True, sends an alert on startup for any items currently In Stock (Default: True)
-NOTIFY_ON_INITIAL_RUN = os.getenv("NOTIFY_ON_INITIAL_RUN", "True").lower() in ("true", "1", "yes")
+# Alert cooldown in seconds (avoids repeating spam alerts while stock remains active)
+ALERT_COOLDOWN_SECONDS = int(os.getenv("ALERT_COOLDOWN_SECONDS", "90"))
 
-# Send a startup confirmation message to Telegram when the script launches
-SEND_STARTUP_MESSAGE = os.getenv("SEND_STARTUP_MESSAGE", "True").lower() in ("true", "1", "yes")
-
-# Send a full stock summary report to Telegram after the first check cycle
-SEND_INITIAL_SUMMARY = os.getenv("SEND_INITIAL_SUMMARY", "True").lower() in ("true", "1", "yes")
-
-# Send regular periodic summary update report every 360 cycles
-PERIODIC_SUMMARY_CYCLES = int(os.getenv("PERIODIC_SUMMARY_CYCLES", "360"))
-
-# Heartbeat interval every 360 cycles. Set to 0 to disable
-HEARTBEAT_CYCLE_INTERVAL = int(os.getenv("HEARTBEAT_CYCLE_INTERVAL", "360"))
-
-
-
-# Browser timeout in milliseconds (increased to 45s for reliable cloud rendering)
-PAGE_TIMEOUT_MS = int(os.getenv("PAGE_TIMEOUT_MS", "45000"))
-
-# State persistence file
+# State persistence
 STATE_FILE_PATH = os.getenv("STATE_FILE_PATH", "stock_state.json")
 
-# Built-in Keep-Alive Web Server port (Railway / Replit default: 8080)
+# Built-in Keep-Alive / Health Check Web Server
 KEEP_ALIVE_PORT = int(os.getenv("PORT", "8080"))
 
-# Block heavy media resources in Playwright (images, fonts, media) to keep RAM < 150MB
-BLOCK_MEDIA_RESOURCES = True
+# ==========================================
+# 4. Target Stores Configuration
+# ==========================================
+ROOTER_PSN_URL = "https://shop.rooter.gg/product/playstation-gift-cards"
 
-# ==========================================
-# 3. Target Store Configurations (Direct PlayStation Voucher URLs)
-# ==========================================
 TARGET_SITES = [
     {
         "id": "rooter_psn",
         "platform": "Rooter Shop",
         "item_name": "PlayStation Network Wallet Voucher",
-        # Direct product URL for PlayStation cards on Rooter
-        "url": "https://shop.rooter.gg/product/playstation-gift-cards",
-        "engine": "playwright",
-        "wait_selector": "body",
-        "out_of_stock_keywords": ["out of stock", "sold out", "currently unavailable"],
-        "in_stock_keywords": ["proceed to pay", "pay ₹", "pay rs", "add address"],
-        "container_selector": "body",
-        "price_selector": "span[class*='price'], div[class*='price']",
+        "url": ROOTER_PSN_URL,
         "enabled": True,
-    },
-    {
-        "id": "digistore_psn",
-        "platform": "Digistore",
-        "item_name": "PlayStation Network Wallet Topup",
-        # Direct PlayStation cards on Digistore India (Nodwin Gaming)
-        "url": "https://digistore.co.in/product-category/console-games/playstation-card/",
-        "engine": "playwright",
-        "wait_selector": "body",
-        "out_of_stock_keywords": ["out of stock", "sold out", "currently unavailable"],
-        "in_stock_keywords": ["add to cart", "buy now", "select options"],
-        "container_selector": "body",
-        "price_selector": ".price, span.woocommerce-Price-amount",
-        "enabled": True,
-    },
-    {
-        "id": "blinkit_psn",
-        "platform": "Blinkit",
-        "item_name": "Sony PlayStation Instant Voucher (Mumbai)",
-        # Direct Blinkit PlayStation Instant Voucher search in Mumbai
-        "url": "https://blinkit.com/s/?q=playstation+voucher",
-        "engine": "playwright",
-        "wait_selector": "body",
-        "out_of_stock_keywords": ["out of stock", "currently unavailable"],
-        "in_stock_keywords": ["add", "add to cart"],
-        "container_selector": "body",
-        "price_selector": "",
-        "min_interval_seconds": 60,
-        "enabled": True,
-    },
+    }
 ]
-
