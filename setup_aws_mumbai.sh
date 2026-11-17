@@ -1,6 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # AWS Mumbai (ap-south-1) - One-Click 24/7 Setup Script for Rooter PSN Bots
+# Supports Ubuntu 22.04 LTS & Ubuntu 24.04 LTS
 # ==============================================================================
 set -e
 
@@ -8,12 +9,9 @@ echo "=========================================================="
 echo "🚀 Setting up PlayStation Restock & Buy Bots on AWS Mumbai"
 echo "=========================================================="
 
-# 1. Update system & install dependencies
+# 1. Update system & install core tools
 sudo apt-get update -y
-sudo apt-get install -y python3 python3-pip python3-venv git curl wget \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-    libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-    libgbm1 libasound2 libpango-1.0-0 libcairo2
+sudo apt-get install -y python3 python3-pip python3-venv git curl wget
 
 BASE_DIR="/home/ubuntu/rooter_bots"
 mkdir -p "$BASE_DIR"
@@ -44,8 +42,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-playwright install chromium
-playwright install-deps chromium || true
+playwright install --with-deps chromium || playwright install chromium
 if [ ! -f ".env" ]; then
     cp .env.example .env
 fi
@@ -58,8 +55,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-playwright install chromium
-playwright install-deps chromium || true
+playwright install --with-deps chromium || playwright install chromium
 if [ ! -f ".env" ]; then
     cp .env.example .env
 fi
