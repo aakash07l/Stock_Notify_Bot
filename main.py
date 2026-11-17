@@ -488,6 +488,7 @@ async def main():
     # 1. Build Telegram Bot Application
     tg_app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
     tg_app.add_handler(CommandHandler("start", start_command))
+    tg_app.add_handler(CommandHandler("help", start_command))
     tg_app.add_handler(CommandHandler("status", status_command))
     tg_app.add_handler(CommandHandler("check", check_command))
     tg_app.add_handler(CommandHandler("set_target", set_target_command))
