@@ -56,13 +56,14 @@ BROWSER_USER_AGENT = (
 # ==========================================
 # Telegram Alerts & Webhook Dispatcher
 # ==========================================
-async def send_telegram_alert(
-    denomination: int,
-    in_stock: bool,
-    quantity: int = 2,
-    custom_msg: Optional[str] = None
+async def send_consolidated_restock_alert(
+    stock_state: Dict[int, bool],
+    target_denom: int = 1000,
 ) -> bool:
-    """Dispatches instant Telegram restock alert to all configured admin chat IDs."""
+    """
+    Sends ONE unified restock alert showing all denominations together.
+    Prevents sending 5 separate spam messages.
+    """
     if not config.TELEGRAM_BOT_TOKEN:
         logger.warning("Telegram Bot Token is missing! Skipping notification.")
         return False
@@ -70,24 +71,22 @@ async def send_telegram_alert(
     now_ist = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)
     formatted_time = now_ist.strftime("%d-%b-%Y %I:%M:%S %p IST")
 
-    if custom_msg:
-        msg = custom_msg
-    elif in_stock:
-        msg = (
-            f"🚨 <b>RESTOCK ALERT: PlayStation ₹{denomination:,} IN STOCK!</b>\n\n"
-            f"🎮 <b>Platform:</b> Rooter Shop\n"
-            f"💳 <b>Item:</b> PlayStation Gift Card ₹{denomination:,}\n"
-            f"📦 <b>Target Quantity:</b> {quantity} cards (₹{denomination * quantity:,})\n"
-            f"⚡ <b>Action:</b> Instant signal dispatched to Buy Bot!\n"
-            f"⏰ <b>Detected At:</b> {formatted_time}\n\n"
-            f"👉 <a href='{config.ROOTER_PSN_URL}'><b>Click Here to View on Rooter</b></a>"
-        )
-    else:
-        msg = (
-            f"ℹ️ <b>Stock Status:</b> PlayStation ₹{denomination:,} is currently <b>Out of Stock</b>.\n"
-            f"⏰ <i>{formatted_time}</i>"
-        )
+    lines = [
+        "🚨 <b>RESTOCK ALERT: PlayStation IN STOCK!</b>\n"
+    ]
 
+    for d in [1000, 2000, 3000, 4000, 5000]:
+        badge = "🟢 <b>IN STOCK NOW</b>" if stock_state.get(d) else "🔴 Out of Stock"
+        lines.append(f"• PlayStation ₹{d:,} Gift Card: {badge}")
+
+    lines.append("")
+    lines.append("🎮 <b>Platform:</b> Rooter Shop")
+    lines.append(f"💳 <b>Item:</b> PlayStation Gift Card ₹{target_denom:,}")
+    lines.append("⚡ <b>Action:</b> Instant signal dispatched to Buy Bot!")
+    lines.append(f"⏰ <b>Detected At:</b> {formatted_time}\n")
+    lines.append(f"👉 <a href='{config.ROOTER_PSN_URL}'><b>Click Here to View on Rooter</b></a>")
+
+    message_text = "\n".join(lines)
     api_url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
     any_success = False
 
@@ -96,7 +95,7 @@ async def send_telegram_alert(
             for chat_id in config.TELEGRAM_CHAT_IDS:
                 payload = {
                     "chat_id": chat_id,
-                    "text": msg,
+                    "text": message_text,
                     "parse_mode": "HTML",
                     "disable_web_page_preview": False,
                 }
@@ -112,6 +111,25 @@ async def send_telegram_alert(
         logger.error(f"Telegram client error: {e}")
 
     return any_success
+
+
+async def send_simple_telegram_msg(msg: str) -> bool:
+    """Dispatches a simple notification message to Telegram."""
+    if not config.TELEGRAM_BOT_TOKEN:
+        return False
+    api_url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for chat_id in config.TELEGRAM_CHAT_IDS:
+                await client.post(api_url, json={
+                    "chat_id": chat_id,
+                    "text": msg,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": False,
+                })
+        return True
+    except Exception:
+        return False
 
 
 async def trigger_buy_bot_webhook(denomination: int, quantity: int = 2) -> bool:
@@ -150,36 +168,55 @@ async def trigger_buy_bot_webhook(denomination: int, quantity: int = 2) -> bool:
 # ==========================================
 def parse_rooter_nextjs_stock(html: str) -> Dict[int, bool]:
     """
-    Ultra-fast parser for Rooter's Next.js embedded JSON stream.
-    Normalizes escaped quotes and extracts stock availability for each denomination.
+    Zero-Fake-Alert parser for Rooter's Next.js embedded JSON stream.
+    Validates both variation outOfStock flag AND sellers array (outOfStock=false with quantity>0).
     """
     results: Dict[int, bool] = {1000: False, 2000: False, 3000: False, 4000: False, 5000: False}
     if not html:
         return results
 
-    # Normalize escaped quotes from Next.js hydration payload
+    # Normalize escaped quotes from Next.js payload
     clean_html = html.replace('\\"', '"')
 
     denominations = [1000, 2000, 3000, 4000, 5000]
 
     for d in denominations:
-        name_marker = f"Rs.{d} Wallet Code"
+        name_marker = f'"name":"Rs.{d} Wallet Code"'
         idx = clean_html.find(name_marker)
         if idx == -1:
-            name_marker = f"{d} Wallet Code"
+            name_marker = f'"name":"Rs. {d} Wallet Code"'
+            idx = clean_html.find(name_marker)
+        if idx == -1:
+            name_marker = f'"name":"{d} Wallet Code"'
             idx = clean_html.find(name_marker)
 
         if idx != -1:
-            # Find next variation to prevent cross-denomination bleed
+            # Strictly isolate this variation block before the next variation
             next_marker_idx = clean_html.find('"name":"Rs.', idx + len(name_marker))
-            end_idx = next_marker_idx if next_marker_idx != -1 else idx + 750
-            block = clean_html[idx : min(idx + 750, end_idx)]
-            out_flags = re.findall(r'"outOfStock"\s*:\s*(true|false)', block, re.IGNORECASE)
-            if out_flags:
-                has_in_stock = any(f.lower() == "false" for f in out_flags)
-                results[d] = has_in_stock
-            else:
-                results[d] = False
+            end_idx = next_marker_idx if next_marker_idx != -1 else idx + 700
+            block = clean_html[idx : min(idx + 700, end_idx)]
+
+            # 1. Check variation-level outOfStock flag
+            var_out_match = re.search(r'"outOfStock"\s*:\s*(true|false)', block, re.IGNORECASE)
+            var_is_in_stock = var_out_match and var_out_match.group(1).lower() == "false"
+
+            # 2. Check sellers array: at least one seller must be outOfStock=false AND quantity > 0
+            sellers_in_stock = False
+            sellers_match = re.search(r'"sellers"\s*:\s*(\[[^\]]+\])', block, re.IGNORECASE)
+            if sellers_match:
+                try:
+                    sellers = json.loads(sellers_match.group(1))
+                    for s in sellers:
+                        s_out = s.get("outOfStock", True)
+                        s_qty = int(s.get("quantity", 0))
+                        if s_out is False and s_qty > 0:
+                            sellers_in_stock = True
+                            break
+                except Exception:
+                    pass
+
+            # True in stock ONLY if variation or verified seller confirms stock
+            results[d] = bool(var_is_in_stock or sellers_in_stock)
         else:
             results[d] = False
 
@@ -268,49 +305,47 @@ async def restock_monitor_loop():
         f"📡 <b>Status:</b> 🟢 24/7 Monitoring Active on AWS Mumbai\n"
         f"⏰ <i>Started: {now_ist.strftime('%d-%b-%Y %I:%M:%S %p IST')}</i>"
     )
-    asyncio.create_task(send_telegram_alert(config.TARGET_DENOMINATION, False, custom_msg=start_msg))
+    asyncio.create_task(send_simple_telegram_msg(start_msg))
+
+    LAST_CONSOLIDATED_ALERT_TIME = 0.0
 
     while True:
         try:
             TOTAL_CYCLES += 1
             LAST_CHECK_TIME = time.time()
 
-            # 1. Primary check: Fast HTTP request (< 500ms)
+            # 1. Primary check: Fast HTTP request (< 500ms) with cache-busting
             stock_data = await check_rooter_stock_http()
 
             # 2. Fallback check: Playwright if HTTP failed
             if stock_data is None:
-                logger.info("HTTP fetch failed, falling back to Playwright headless sweep...")
+                logger.info("HTTP fetch failed, falling back to Playwright sweep...")
                 stock_data = await check_rooter_stock_playwright()
 
             LATEST_STOCK_STATE = stock_data
             target_denom = config.TARGET_DENOMINATION
-            is_target_in_stock = stock_data.get(target_denom, False)
             now = time.time()
 
-            # 1. Target denomination restock -> Trigger Buy Bot + Alert Telegram
-            if is_target_in_stock:
-                last_trig = LAST_TRIGGER_TIMES.get(target_denom, 0.0)
-                if (now - last_trig) > config.ALERT_COOLDOWN_SECONDS:
-                    LAST_TRIGGER_TIMES[target_denom] = now
-                    logger.info(f"🚨 TARGET RESTOCK: PlayStation ₹{target_denom:,} is IN STOCK! Dispatched to Buy Bot.")
+            # Check if ANY PlayStation denomination is in stock
+            any_in_stock = any(stock_data.values())
 
-                    # Parallel execution: Trigger Buy Bot & Send Telegram Alert at the exact same millisecond
-                    await asyncio.gather(
-                        trigger_buy_bot_webhook(target_denom, config.TARGET_QUANTITY),
-                        send_telegram_alert(target_denom, in_stock=True, quantity=config.TARGET_QUANTITY)
-                    )
+            if any_in_stock:
+                # Check cooldown to avoid spamming alerts every 3 seconds
+                if (now - LAST_CONSOLIDATED_ALERT_TIME) > config.ALERT_COOLDOWN_SECONDS:
+                    LAST_CONSOLIDATED_ALERT_TIME = now
+                    logger.info("🚨 RESTOCK CONFIRMED! Sending single consolidated alert to Telegram...")
 
-            # 2. Check if ANY OTHER denomination restocked -> Alert Telegram
-            for other_d, is_avail in stock_data.items():
-                if is_avail and other_d != target_denom:
-                    other_last = LAST_TRIGGER_TIMES.get(other_d, 0.0)
-                    if (now - other_last) > config.ALERT_COOLDOWN_SECONDS:
-                        LAST_TRIGGER_TIMES[other_d] = now
-                        logger.info(f"🚨 OTHER RESTOCK: PlayStation ₹{other_d:,} is IN STOCK! Notifying Telegram.")
-                        await send_telegram_alert(other_d, in_stock=True, quantity=1)
+                    tasks = []
+                    # If target denomination is in stock, trigger Buy Bot immediately!
+                    if stock_data.get(target_denom):
+                        logger.info(f"⚡ Target ₹{target_denom:,} is in stock! Triggering Buy Bot on localhost...")
+                        tasks.append(trigger_buy_bot_webhook(target_denom, config.TARGET_QUANTITY))
 
-            if not any(stock_data.values()):
+                    # Send ONE consolidated message for all denominations
+                    tasks.append(send_consolidated_restock_alert(stock_data, target_denom))
+
+                    await asyncio.gather(*tasks)
+            else:
                 if TOTAL_CYCLES % 120 == 0:
                     logger.info(f"[Cycle #{TOTAL_CYCLES}] All PlayStation vouchers currently Out of Stock. Monitoring active...")
 
