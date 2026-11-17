@@ -170,7 +170,10 @@ def parse_rooter_nextjs_stock(html: str) -> Dict[int, bool]:
             idx = clean_html.find(name_marker)
 
         if idx != -1:
-            block = clean_html[idx : idx + 750]
+            # Find next variation to prevent cross-denomination bleed
+            next_marker_idx = clean_html.find('"name":"Rs.', idx + len(name_marker))
+            end_idx = next_marker_idx if next_marker_idx != -1 else idx + 750
+            block = clean_html[idx : min(idx + 750, end_idx)]
             out_flags = re.findall(r'"outOfStock"\s*:\s*(true|false)', block, re.IGNORECASE)
             if out_flags:
                 has_in_stock = any(f.lower() == "false" for f in out_flags)
