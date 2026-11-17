@@ -150,59 +150,57 @@ async def trigger_buy_bot_webhook(denomination: int, quantity: int = 2) -> bool:
 # ==========================================
 def parse_rooter_nextjs_stock(html: str) -> Dict[int, bool]:
     """
-    Ultra-fast regex parser for Rooter's Next.js embedded JSON stream.
-    Extracts stock availability for ₹1000, ₹2000, ₹3000, ₹4000, ₹5000 denominations.
+    Ultra-fast parser for Rooter's Next.js embedded JSON stream.
+    Normalizes escaped quotes and extracts stock availability for each denomination.
     """
-    results: Dict[int, bool] = {}
-    
-    # Supported denominations
+    results: Dict[int, bool] = {1000: False, 2000: False, 3000: False, 4000: False, 5000: False}
+    if not html:
+        return results
+
+    # Normalize escaped quotes from Next.js hydration payload
+    clean_html = html.replace('\\"', '"')
+
     denominations = [1000, 2000, 3000, 4000, 5000]
 
     for d in denominations:
-        # Search for pattern: "name":"Rs.1000 Wallet Code" ... "outOfStock":false
-        pattern = re.compile(
-            rf'"name"\s*:\s*"[^"]*?{d}\s*Wallet\s*Code".*?"outOfStock"\s*:\s*(true|false)',
-            re.IGNORECASE | re.DOTALL
-        )
-        match = pattern.search(html)
-        if match:
-            is_out = match.group(1).lower() == "true"
-            results[d] = not is_out
-        else:
-            # Check secondary pattern: "sellers":[{..."outOfStock":false...}]
-            sec_pattern = re.compile(
-                rf'{d}\s*Wallet\s*Code.*?sellers.*?outOfStock[\":\s]+(true|false)',
-                re.IGNORECASE | re.DOTALL
-            )
-            sec_match = sec_pattern.search(html)
-            if sec_match:
-                is_out = sec_match.group(1).lower() == "true"
-                results[d] = not is_out
+        name_marker = f"Rs.{d} Wallet Code"
+        idx = clean_html.find(name_marker)
+        if idx == -1:
+            name_marker = f"{d} Wallet Code"
+            idx = clean_html.find(name_marker)
+
+        if idx != -1:
+            block = clean_html[idx : idx + 750]
+            out_flags = re.findall(r'"outOfStock"\s*:\s*(true|false)', block, re.IGNORECASE)
+            if out_flags:
+                has_in_stock = any(f.lower() == "false" for f in out_flags)
+                results[d] = has_in_stock
             else:
-                # If denomination is mentioned on page and not marked out of stock
-                if f"{d} Wallet Code" in html and "out of stock" not in html.lower():
-                    results[d] = True
-                else:
-                    results[d] = False
+                results[d] = False
+        else:
+            results[d] = False
 
     return results
 
 
 async def check_rooter_stock_http() -> Optional[Dict[int, bool]]:
     """
-    High-speed async HTTP fetch.
+    High-speed async HTTP fetch with cache-busting to bypass CDN stale caches.
     Takes 200-500ms, consumes < 15MB RAM, and doesn't load images or heavy JS.
     """
     headers = {
         "User-Agent": BROWSER_USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-IN,en;q=0.9",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
+        "Expires": "0",
     }
+    # Cache-busting parameter to prevent Cloudflare/Fastly stale CDN caching
+    cache_bust_url = f"{config.ROOTER_PSN_URL}?_t={int(time.time() * 1000)}"
     try:
         async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=8.0) as client:
-            resp = await client.get(config.ROOTER_PSN_URL)
+            resp = await client.get(cache_bust_url)
             if resp.status_code == 200 and "Wallet Code" in resp.text:
                 return parse_rooter_nextjs_stock(resp.text)
             else:
@@ -285,24 +283,33 @@ async def restock_monitor_loop():
             LATEST_STOCK_STATE = stock_data
             target_denom = config.TARGET_DENOMINATION
             is_target_in_stock = stock_data.get(target_denom, False)
+            now = time.time()
 
+            # 1. Target denomination restock -> Trigger Buy Bot + Alert Telegram
             if is_target_in_stock:
-                now = time.time()
                 last_trig = LAST_TRIGGER_TIMES.get(target_denom, 0.0)
-
-                # Trigger webhook and alert if not in cooldown
                 if (now - last_trig) > config.ALERT_COOLDOWN_SECONDS:
                     LAST_TRIGGER_TIMES[target_denom] = now
-                    logger.info(f"🚨 RESTOCK DETECTED: PlayStation ₹{target_denom:,} is IN STOCK!")
+                    logger.info(f"🚨 TARGET RESTOCK: PlayStation ₹{target_denom:,} is IN STOCK! Dispatched to Buy Bot.")
 
                     # Parallel execution: Trigger Buy Bot & Send Telegram Alert at the exact same millisecond
                     await asyncio.gather(
                         trigger_buy_bot_webhook(target_denom, config.TARGET_QUANTITY),
                         send_telegram_alert(target_denom, in_stock=True, quantity=config.TARGET_QUANTITY)
                     )
-            else:
+
+            # 2. Check if ANY OTHER denomination restocked -> Alert Telegram
+            for other_d, is_avail in stock_data.items():
+                if is_avail and other_d != target_denom:
+                    other_last = LAST_TRIGGER_TIMES.get(other_d, 0.0)
+                    if (now - other_last) > config.ALERT_COOLDOWN_SECONDS:
+                        LAST_TRIGGER_TIMES[other_d] = now
+                        logger.info(f"🚨 OTHER RESTOCK: PlayStation ₹{other_d:,} is IN STOCK! Notifying Telegram.")
+                        await send_telegram_alert(other_d, in_stock=True, quantity=1)
+
+            if not any(stock_data.values()):
                 if TOTAL_CYCLES % 120 == 0:
-                    logger.info(f"[Cycle #{TOTAL_CYCLES}] ₹{target_denom} is Out of Stock. Monitoring active...")
+                    logger.info(f"[Cycle #{TOTAL_CYCLES}] All PlayStation vouchers currently Out of Stock. Monitoring active...")
 
         except Exception as e:
             logger.error(f"Error in restock monitor loop: {e}", exc_info=True)
