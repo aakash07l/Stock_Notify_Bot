@@ -34,8 +34,17 @@ INTERNAL_SECRET = os.getenv("INTERNAL_SECRET", "psn_sniper_secret_key_2026").str
 # ==========================================
 # Target Denomination: 1000 (₹1,000 PlayStation Card)
 TARGET_DENOMINATION = int(os.getenv("TARGET_DENOMINATION", "1000"))
-# Target Quantity to buy: 2 cards = ₹2,000
-TARGET_QUANTITY = int(os.getenv("TARGET_QUANTITY", "2"))
+# Target Quantity to buy: 1 card by default (User can change via /set_target)
+TARGET_QUANTITY = int(os.getenv("TARGET_QUANTITY", "1"))
+
+# Rooter card prices including platform convenience fees
+ROOTER_CARD_PRICES = {
+    1000: 1156,
+    2000: 2309,
+    3000: 3459,
+    4000: 4609,
+    5000: 5760,
+}
 
 # Interval between checks in seconds (3 seconds for ultra-fast restock detection)
 CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "3"))

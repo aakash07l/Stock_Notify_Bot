@@ -77,7 +77,8 @@ async def send_consolidated_restock_alert(
 
     for d in [1000, 2000, 3000, 4000, 5000]:
         badge = "🟢 <b>IN STOCK NOW</b>" if stock_state.get(d) else "🔴 Out of Stock"
-        lines.append(f"• PlayStation ₹{d:,} Gift Card: {badge}")
+        total_price = config.ROOTER_CARD_PRICES.get(d, d)
+        lines.append(f"• PlayStation ₹{d:,} Gift Card (Total: ₹{total_price:,}): {badge}")
 
     lines.append("")
     lines.append("🎮 <b>Platform:</b> Rooter Shop")
@@ -168,8 +169,11 @@ async def trigger_buy_bot_webhook(denomination: int, quantity: int = 2) -> bool:
 # ==========================================
 def parse_rooter_nextjs_stock(html: str) -> Dict[int, bool]:
     """
-    Zero-Fake-Alert parser for Rooter's Next.js embedded JSON stream.
-    Validates both variation outOfStock flag AND sellers array (outOfStock=false with quantity>0).
+    100% Zero-Fake-Alert parser for Rooter's Next.js embedded baseVariations JSON.
+    Validates:
+    1. Variation-level outOfStock flag MUST be False.
+    2. At least one seller in sellers array MUST have outOfStock == False AND quantity > 0.
+    A denomination is declared IN STOCK only when BOTH conditions are strictly satisfied.
     """
     results: Dict[int, bool] = {1000: False, 2000: False, 3000: False, 4000: False, 5000: False}
     if not html:
@@ -178,47 +182,58 @@ def parse_rooter_nextjs_stock(html: str) -> Dict[int, bool]:
     # Normalize escaped quotes from Next.js payload
     clean_html = html.replace('\\"', '"')
 
-    denominations = [1000, 2000, 3000, 4000, 5000]
+    marker = '"baseVariations":['
+    start_idx = clean_html.find(marker)
+    if start_idx == -1:
+        return results
 
-    for d in denominations:
-        name_marker = f'"name":"Rs.{d} Wallet Code"'
-        idx = clean_html.find(name_marker)
-        if idx == -1:
-            name_marker = f'"name":"Rs. {d} Wallet Code"'
-            idx = clean_html.find(name_marker)
-        if idx == -1:
-            name_marker = f'"name":"{d} Wallet Code"'
-            idx = clean_html.find(name_marker)
+    array_start = start_idx + len(marker) - 1
+    depth = 0
+    in_string = False
+    escape = False
+    array_end = -1
 
-        if idx != -1:
-            # Strictly isolate this variation block before the next variation
-            next_marker_idx = clean_html.find('"name":"Rs.', idx + len(name_marker))
-            end_idx = next_marker_idx if next_marker_idx != -1 else idx + 700
-            block = clean_html[idx : min(idx + 700, end_idx)]
+    for i in range(array_start, len(clean_html)):
+        ch = clean_html[i]
+        if escape:
+            escape = False
+            continue
+        if ch == '\\':
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if ch == '[':
+                depth += 1
+            elif ch == ']':
+                depth -= 1
+                if depth == 0:
+                    array_end = i + 1
+                    break
 
-            # 1. Check variation-level outOfStock flag
-            var_out_match = re.search(r'"outOfStock"\s*:\s*(true|false)', block, re.IGNORECASE)
-            var_is_in_stock = var_out_match and var_out_match.group(1).lower() == "false"
+    if array_end == -1:
+        return results
 
-            # 2. Check sellers array: at least one seller must be outOfStock=false AND quantity > 0
-            sellers_in_stock = False
-            sellers_match = re.search(r'"sellers"\s*:\s*(\[[^\]]+\])', block, re.IGNORECASE)
-            if sellers_match:
-                try:
-                    sellers = json.loads(sellers_match.group(1))
-                    for s in sellers:
-                        s_out = s.get("outOfStock", True)
-                        s_qty = int(s.get("quantity", 0))
-                        if s_out is False and s_qty > 0:
-                            sellers_in_stock = True
-                            break
-                except Exception:
-                    pass
+    try:
+        variations = json.loads(clean_html[array_start:array_end])
+        for v in variations:
+            name = str(v.get("name", ""))
+            var_out = v.get("outOfStock", True)
+            sellers = v.get("sellers", [])
+            has_seller_stock = any(
+                s.get("outOfStock") is False and int(s.get("quantity", 0)) > 0
+                for s in sellers
+            )
+            # A card is genuine IN STOCK only if variation outOfStock is False AND seller has stock!
+            is_in_stock = (var_out is False) and has_seller_stock
 
-            # True in stock ONLY if variation or verified seller confirms stock
-            results[d] = bool(var_is_in_stock or sellers_in_stock)
-        else:
-            results[d] = False
+            for d in [1000, 2000, 3000, 4000, 5000]:
+                if str(d) in name:
+                    results[d] = is_in_stock
+    except Exception as e:
+        logger.error(f"Error parsing baseVariations JSON: {e}")
 
     return results
 
