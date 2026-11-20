@@ -39,11 +39,11 @@ TARGET_QUANTITY = int(os.getenv("TARGET_QUANTITY", "1"))
 
 # Rooter card prices including platform convenience fees
 ROOTER_CARD_PRICES = {
-    1000: 1156,
-    2000: 2309,
-    3000: 3459,
-    4000: 4609,
-    5000: 5760,
+    1000: 1206,
+    2000: 2359,
+    3000: 3509,
+    4000: 4659,
+    5000: 5810,
 }
 
 # Interval between checks in seconds (3 seconds for ultra-fast restock detection)
